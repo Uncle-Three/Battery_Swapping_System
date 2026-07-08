@@ -1,0 +1,128 @@
+import { useState, type FC } from 'react';
+import { Input } from '../../../../components/ui/Input';
+import { Dropdown } from '../../../../components/ui/Dropdown';
+import { Button } from '../../../../components/ui/Button';
+import { ClipboardList, CheckCircle2 } from 'lucide-react';
+
+export const MaintenanceForm: FC = () => {
+  const [batteryId, setBatteryId] = useState('');
+  const [soh, setSoh] = useState('');
+  const [soc, setSoc] = useState('');
+  const [status, setStatus] = useState('READY');
+  const [notes, setNotes] = useState('');
+  const [submitted, setSubmitted] = useState(false);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!batteryId) return;
+
+    console.log('Maintenance record logged:', { batteryId, soh, soc, status, notes });
+    setSubmitted(true);
+  };
+
+  const statusOptions = [
+    { value: 'READY', label: 'Ready - Khả dụng đổi' },
+    { value: 'CHARGING', label: 'Charging - Đang sạc' },
+    { value: 'MAINTENANCE', label: 'Maintenance - Đang sửa' },
+    { value: 'FAULTY', label: 'Faulty - Hỏng hóc nặng' },
+  ];
+
+  return (
+    <div className="flex flex-col gap-6 text-left max-w-xl">
+      <div className="flex items-center gap-3">
+        <div className="p-2 bg-green-50 dark:bg-green-950/30 text-green-600 dark:text-green-550 rounded-lg">
+          <ClipboardList className="h-6 w-6" />
+        </div>
+        <div>
+          <h2 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white">
+            Ghi chép bảo trì Pin
+          </h2>
+          <p className="text-sm text-slate-550 dark:text-slate-400 mt-0.5">
+            Cập nhật chỉ số kỹ thuật của pin sau khi hoàn tất kiểm tra phần cứng hoặc sạc thử nghiệm.
+          </p>
+        </div>
+      </div>
+
+      {submitted ? (
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6 shadow-sm flex flex-col gap-4 text-center items-center">
+          <CheckCircle2 className="h-12 w-12 text-green-600 dark:text-green-550 animate-bounce" />
+          <div>
+            <h3 className="font-bold text-lg text-slate-900 dark:text-white">Ghi nhận bảo trì thành công</h3>
+            <p className="text-sm text-slate-500 mt-1">
+              Trạng thái kỹ thuật của Pin <span className="font-mono font-bold">{batteryId}</span> đã được lưu trữ.
+            </p>
+          </div>
+          <Button
+            variant="primary"
+            onClick={() => {
+              setSubmitted(false);
+              setBatteryId('');
+              setSoh('');
+              setSoc('');
+              setNotes('');
+            }}
+          >
+            Tạo phiếu khác
+          </Button>
+        </div>
+      ) : (
+        <form onSubmit={handleSubmit} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6 shadow-sm flex flex-col gap-4">
+          <Input
+            label="ID bộ Pin"
+            placeholder="Ví dụ: b-101"
+            value={batteryId}
+            onChange={(e) => setBatteryId(e.target.value)}
+            required
+          />
+
+          <div className="grid grid-cols-2 gap-4">
+            <Input
+              label="Chỉ số SoH hiện tại (%)"
+              type="number"
+              min={0}
+              max={100}
+              placeholder="Ví dụ: 95"
+              value={soh}
+              onChange={(e) => setSoh(e.target.value)}
+              required
+            />
+            <Input
+              label="Chỉ số SoC hiện tại (%)"
+              type="number"
+              min={0}
+              max={100}
+              placeholder="Ví dụ: 80"
+              value={soc}
+              onChange={(e) => setSoc(e.target.value)}
+              required
+            />
+          </div>
+
+          <Dropdown
+            label="Phân loại trạng thái pin"
+            options={statusOptions}
+            selectedValue={status}
+            onChange={(val) => setStatus(val)}
+          />
+
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
+              Mô tả chi tiết hạng mục sửa chữa
+            </label>
+            <textarea
+              className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
+              rows={3}
+              placeholder="Nội dung kiểm tra, ví dụ: Thay thế cáp cảm biến nhiệt độ, sạc xả ổn định."
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+            />
+          </div>
+
+          <Button type="submit" variant="primary" className="w-full mt-2">
+            Lưu phiếu bảo trì
+          </Button>
+        </form>
+      )}
+    </div>
+  );
+};

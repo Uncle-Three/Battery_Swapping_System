@@ -2,11 +2,12 @@ import { useState, type FC } from 'react';
 import { Table } from '../../../../components/ui/Table';
 import { Badge } from '../../../../components/ui/Badge';
 import { Button } from '../../../../components/ui/Button';
-import { Users, UserPlus } from 'lucide-react';
+import { Users, UserPlus, Search } from 'lucide-react';
 import { UserRole } from '../../../../constants/roles';
 import type { User } from '../../../../types';
 
 export const UserManagement: FC = () => {
+  const [searchTerm, setSearchTerm] = useState('');
   // Mock users database
   const [users, setUsers] = useState<User[]>([
     { id: 'u-1', name: 'Nguyễn Tuấn Anh', email: 'tuananh@gmail.com', role: UserRole.MEMBER, createdAt: '2026-05-12' },
@@ -30,9 +31,14 @@ export const UserManagement: FC = () => {
     }
   };
 
+  const filteredUsers = users.filter((u) => 
+    u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    u.email.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
   return (
     <div className="flex flex-col gap-6 text-left max-w-5xl">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="flex items-center gap-3">
           <div className="p-2 bg-green-50 dark:bg-green-950/30 text-green-600 dark:text-green-500 rounded-lg">
             <Users className="h-6 w-6" />
@@ -52,8 +58,24 @@ export const UserManagement: FC = () => {
         </Button>
       </div>
 
+      {/* Toolbar filter */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-205 dark:border-slate-850 rounded-2xl p-4 shadow-sm flex items-center">
+        <div className="relative w-full sm:max-w-xs">
+          <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+            <Search className="h-4 w-4" />
+          </span>
+          <input
+            type="text"
+            className="w-full pl-9 pr-4 py-2 border border-slate-250 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+            placeholder="Tìm theo họ tên hoặc email..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+        </div>
+      </div>
+
       <Table headers={['ID', 'Họ tên', 'Email', 'Vai trò (Role)', 'Ngày tạo', 'Thao tác nâng quyền']}>
-        {users.map((u) => (
+        {filteredUsers.map((u) => (
           <tr key={u.id} className="hover:bg-slate-55 dark:hover:bg-slate-800/40 transition-colors">
             <td className="px-6 py-4 font-mono text-xs">{u.id}</td>
             <td className="px-6 py-4 font-bold text-slate-850 dark:text-slate-100">{u.name}</td>
@@ -64,7 +86,7 @@ export const UserManagement: FC = () => {
               </Badge>
             </td>
             <td className="px-6 py-4 text-slate-500">{u.createdAt}</td>
-            <td className="px-6 py-4 flex gap-2">
+            <td className="px-6 py-4">
               <select
                 className="bg-white dark:bg-slate-800 border border-slate-350 dark:border-slate-700 rounded-lg text-xs font-semibold px-2 py-1 text-slate-800 dark:text-slate-200"
                 value={u.role}
@@ -83,3 +105,4 @@ export const UserManagement: FC = () => {
     </div>
   );
 };
+export default UserManagement;

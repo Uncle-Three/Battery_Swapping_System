@@ -1,13 +1,14 @@
-import React, { useState } from 'react';
+import { useState, type FC, type FormEvent } from 'react';
 import { Input } from '../../../../components/ui/Input';
 import { Button } from '../../../../components/ui/Button';
 import { Table } from '../../../../components/ui/Table';
-import { Settings, ShieldAlert } from 'lucide-react';
+import { Settings, ShieldAlert, Search } from 'lucide-react';
 
-export const SystemConfig: React.FC = () => {
+export const SystemConfig: FC = () => {
   const [swapPrice, setSwapPrice] = useState('45000');
   const [bookingLimit, setBookingLimit] = useState('30');
   const [saved, setSaved] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
 
   // Mock system audit logs
   const [auditLogs] = useState([
@@ -16,11 +17,17 @@ export const SystemConfig: React.FC = () => {
     { id: 'log-3', adminName: 'Lê Thị Thu', action: 'Nâng quyền hạn tài khoản', details: 'User ID u-3: MEMBER -> STAFF', time: '2026-07-07 16:45' },
   ]);
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = (e: FormEvent) => {
     e.preventDefault();
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
+
+  const filteredLogs = auditLogs.filter(log => 
+    log.adminName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    log.action.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    log.details.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   return (
     <div className="flex flex-col gap-6 text-left max-w-5xl">
@@ -70,16 +77,31 @@ export const SystemConfig: React.FC = () => {
 
         {/* Audit Logs Table */}
         <div className="md:col-span-2 flex flex-col gap-4">
-          <h3 className="font-bold text-sm text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-            <ShieldAlert className="h-5 w-5 text-slate-400" />
-            <span>Audit Logs - Lịch sử quản trị</span>
-          </h3>
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <h3 className="font-bold text-sm text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+              <ShieldAlert className="h-5 w-5 text-slate-400" />
+              <span>Audit Logs - Lịch sử quản trị</span>
+            </h3>
+
+            <div className="relative w-full sm:max-w-xs">
+              <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                <Search className="h-4 w-4" />
+              </span>
+              <input
+                type="text"
+                className="w-full pl-9 pr-4 py-2 border border-slate-250 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                placeholder="Tìm admin, hành động hoặc nội dung..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+          </div>
 
           <Table headers={['Admin', 'Hành động', 'Nội dung chi tiết', 'Thời gian']}>
-            {auditLogs.map((log) => (
+            {filteredLogs.map((log) => (
               <tr key={log.id} className="hover:bg-slate-55 dark:hover:bg-slate-800/40 transition-colors">
                 <td className="px-6 py-4 font-bold text-slate-850 dark:text-slate-100">{log.adminName}</td>
-                <td className="px-6 py-4 font-semibold text-xs text-slate-700 dark:text-slate-350">{log.action}</td>
+                <td className="px-6 py-4 font-semibold text-xs text-slate-750 dark:text-slate-350">{log.action}</td>
                 <td className="px-6 py-4 font-mono text-xs text-slate-500">{log.details}</td>
                 <td className="px-6 py-4 text-xs text-slate-405">{log.time}</td>
               </tr>
@@ -90,3 +112,4 @@ export const SystemConfig: React.FC = () => {
     </div>
   );
 };
+export default SystemConfig;

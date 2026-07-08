@@ -11,13 +11,13 @@ export const Home: React.FC = () => {
     <div className="flex flex-col gap-16 py-8">
       {/* Hero Section */}
       <section className="text-center max-w-3xl mx-auto flex flex-col items-center gap-6">
-        <div className="inline-flex items-center gap-2 px-3 py-1 bg-green-50 dark:bg-green-950/30 text-green-605 dark:text-green-900 rounded-full text-sm font-semibold mb-2">
+        <div className="inline-flex items-center gap-2 px-3 py-1 bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green rounded-full text-sm font-semibold mb-2">
           <Zap className="h-4 w-4 fill-current" />
-          <span>Giải pháp đổi pin xe máy điện hàng đầu</span>
+          <span>Giải pháp đổi pin hàng đầu</span>
         </div>
         <h1 className="text-4xl sm:text-6xl font-black tracking-tight leading-tight text-slate-900 dark:text-black">
           Đổi Pin Nhanh Chóng <br />
-          <span className="text-green-605 dark:text-green-500">Chỉ Trong 30 Giây</span>
+          <span className="text-green-600 dark:text-green-450">Chỉ Trong 30 Giây</span>
         </h1>
         <p className="text-lg text-slate-600 dark:text-slate-400 max-w-2xl">
           Quên đi nỗi lo sạc pin hàng giờ. Tìm trạm gần nhất, đặt giữ slot pin và thực hiện đổi pin tại chỗ ngay lập tức để tiếp tục hành trình của bạn.

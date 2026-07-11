@@ -332,6 +332,7 @@ model PaymentTransaction {
   paymentMethod PaymentMethod
   status        PaymentStatus @default(PENDING)
   description   String?
+  vnpTxnRef     String?       @unique // VNPay order reference for IPN lookup
   user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt

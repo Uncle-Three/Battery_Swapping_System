@@ -14,6 +14,11 @@ const envSchema = z.object({
   CLIENT_URL: z.string().default("http://localhost:5173"),
   BCRYPT_SALT_ROUNDS: z.coerce.number().default(12),
   LOG_LEVEL: z.string().default("debug"),
+  // VNPay
+  VNPAY_TMN_CODE: z.string().min(1, "VNPAY_TMN_CODE is required"),
+  VNPAY_HASH_SECRET: z.string().min(1, "VNPAY_HASH_SECRET is required"),
+  VNPAY_URL: z.string().url().default("https://sandbox.vnpayment.vn/paymentv2/vpcpay.html"),
+  VNPAY_RETURN_URL: z.string().url(),
 });
 
 export const env = envSchema.parse(process.env);

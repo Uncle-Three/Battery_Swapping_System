@@ -1,0 +1,417 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum RoleName {
+  GUEST
+  MEMBER
+  STAFF
+  TECHNICIAN
+  MANAGER
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  BLOCKED
+}
+
+enum VehicleStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum StationStatus {
+  ACTIVE
+  INACTIVE
+  MAINTENANCE
+}
+
+enum BatteryStatus {
+  READY
+  CHARGING
+  MAINTENANCE
+  FAULTY
+}
+
+enum SlotStatus {
+  EMPTY
+  CHARGING
+  READY
+  MAINTENANCE
+}
+
+enum BookingStatus {
+  PENDING
+  COMPLETED
+  CANCELLED
+  EXPIRED
+}
+
+enum TransactionStatus {
+  SUCCESS
+  FAILED
+}
+
+enum InvoiceStatus {
+  PAID
+  UNPAID
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+enum PaymentMethod {
+  MOMO
+  VNPAY
+  CARD
+  WALLET
+  CASH
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+}
+
+enum MaintenanceSeverity {
+  LOW
+  WARNING
+  CRITICAL
+}
+
+model Role {
+  id        String   @id @default(uuid())
+  name      RoleName @unique
+  users     User[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("roles")
+}
+
+model User {
+  id                 String               @id @default(uuid())
+  roleId             String
+  fullName           String
+  phone              String?              @unique
+  email              String               @unique
+  passwordHash       String
+  rfidCard           String?              @unique
+  licensePlate       String?              @unique
+  avatarUrl          String?
+  status             UserStatus           @default(ACTIVE)
+  role               Role                 @relation(fields: [roleId], references: [id])
+  wallet             Wallet?
+  vehicles           Vehicle[]
+  bookings           Booking[]
+  swapTransactions   SwapTransaction[]
+  subscriptions      Subscription[]
+  refreshSessions    RefreshSession[]
+  maintenanceRecords MaintenanceRecord[]  @relation("TechnicianMaintenanceRecords")
+  auditLogs          AuditLog[]           @relation("AdminAuditLogs")
+  payments           PaymentTransaction[]
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+
+  @@index([roleId])
+  @@index([status])
+  @@map("users")
+}
+
+model RefreshSession {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  userAgent String?
+  ipAddress String?
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([revokedAt])
+  @@map("refresh_sessions")
+}
+
+model Vehicle {
+  id           String        @id @default(uuid())
+  userId       String
+  name         String
+  plateNumber  String        @unique
+  vinNumber    String?       @unique
+  batteryType  String
+  batteryCount Int           @default(1)
+  status       VehicleStatus @default(ACTIVE)
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bookings     Booking[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@map("vehicles")
+}
+
+model Wallet {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  balance   Int      @default(0)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("wallets")
+}
+
+model Station {
+  id               String            @id @default(uuid())
+  name             String
+  address          String
+  latitude         Float
+  longitude        Float
+  status           StationStatus     @default(ACTIVE)
+  slots            BatterySlot[]
+  bookings         Booking[]
+  swapTransactions SwapTransaction[]
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  @@index([status])
+  @@map("stations")
+}
+
+model BatterySlot {
+  id         String     @id @default(uuid())
+  stationId  String
+  slotNumber Int
+  status     SlotStatus @default(EMPTY)
+  station    Station    @relation(fields: [stationId], references: [id], onDelete: Cascade)
+  battery    Battery?   @relation("SlotBattery")
+  bookings   Booking[]
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  @@unique([stationId, slotNumber])
+  @@index([stationId])
+  @@index([status])
+  @@map("battery_slots")
+}
+
+model Battery {
+  id                     String              @id @default(uuid())
+  serialNumber           String              @unique
+  soc                    Int
+  soh                    Int
+  temperature            Float
+  voltage                Float
+  type                   String?
+  status                 BatteryStatus       @default(CHARGING)
+  slotId                 String?             @unique
+  slot                   BatterySlot?        @relation("SlotBattery", fields: [slotId], references: [id], onDelete: SetNull)
+  bookings               Booking[]
+  batteryInTransactions  SwapTransaction[]   @relation("BatteryInTransactions")
+  batteryOutTransactions SwapTransaction[]   @relation("BatteryOutTransactions")
+  maintenanceRecords     MaintenanceRecord[]
+  healthLogs             BatteryHealthLog[]
+  lastUpdated            DateTime            @default(now())
+  createdAt              DateTime            @default(now())
+  updatedAt              DateTime            @updatedAt
+
+  @@index([status])
+  @@index([slotId])
+  @@map("batteries")
+}
+
+model Booking {
+  id             String           @id @default(uuid())
+  userId         String
+  vehicleId      String?
+  stationId      String
+  slotId         String?
+  batteryId      String?
+  vehicleName    String?
+  timeSlot       String?
+  scheduledStart DateTime?
+  scheduledEnd   DateTime?
+  costEstimate   Int?
+  status         BookingStatus    @default(PENDING)
+  expiryTime     DateTime
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vehicle        Vehicle?         @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  station        Station          @relation(fields: [stationId], references: [id])
+  slot           BatterySlot?     @relation(fields: [slotId], references: [id], onDelete: SetNull)
+  battery        Battery?         @relation(fields: [batteryId], references: [id], onDelete: SetNull)
+  transaction    SwapTransaction?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@index([userId])
+  @@index([vehicleId])
+  @@index([stationId])
+  @@index([status])
+  @@index([expiryTime])
+  @@map("bookings")
+}
+
+model BatteryHealthLog {
+  id          String               @id @default(uuid())
+  batteryId   String
+  soc         Int
+  soh         Int
+  temperature Float
+  voltage     Float
+  severity    MaintenanceSeverity?
+  errorCode   String?
+  errorLog    String?
+  recordedAt  DateTime             @default(now())
+  battery     Battery              @relation(fields: [batteryId], references: [id], onDelete: Cascade)
+
+  @@index([batteryId])
+  @@index([severity])
+  @@index([recordedAt])
+  @@map("battery_health_logs")
+}
+
+model SwapTransaction {
+  id            String            @id @default(uuid())
+  userId        String
+  stationId     String
+  bookingId     String?           @unique
+  batteryInId   String?
+  batteryInSoc  Int
+  batteryOutId  String?
+  batteryOutSoc Int
+  cost          Int
+  status        TransactionStatus @default(SUCCESS)
+  user          User              @relation(fields: [userId], references: [id])
+  station       Station           @relation(fields: [stationId], references: [id])
+  booking       Booking?          @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  batteryIn     Battery?          @relation("BatteryInTransactions", fields: [batteryInId], references: [id], onDelete: SetNull)
+  batteryOut    Battery?          @relation("BatteryOutTransactions", fields: [batteryOutId], references: [id], onDelete: SetNull)
+  invoice       Invoice?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  @@index([userId])
+  @@index([stationId])
+  @@index([status])
+  @@map("swap_transactions")
+}
+
+model Invoice {
+  id            String          @id @default(uuid())
+  transactionId String          @unique
+  amount        Int
+  paymentMethod PaymentMethod   @default(WALLET)
+  status        InvoiceStatus   @default(UNPAID)
+  transaction   SwapTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@map("invoices")
+}
+
+model PaymentTransaction {
+  id            String        @id @default(uuid())
+  userId        String
+  amount        Int
+  paymentMethod PaymentMethod
+  status        PaymentStatus @default(PENDING)
+  description   String?
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@map("payment_transactions")
+}
+
+model SubscriptionPackage {
+  id            String         @id @default(uuid())
+  name          String
+  price         Int
+  description   String?
+  monthlyLimit  Int?
+  isUnlimited   Boolean        @default(false)
+  isActive      Boolean        @default(true)
+  subscriptions Subscription[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@map("subscription_packages")
+}
+
+model Subscription {
+  id         String              @id @default(uuid())
+  userId     String
+  packageId  String
+  status     SubscriptionStatus  @default(ACTIVE)
+  startedAt  DateTime            @default(now())
+  expiresAt  DateTime
+  usageCount Int                 @default(0)
+  user       User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  package    SubscriptionPackage @relation(fields: [packageId], references: [id])
+  createdAt  DateTime            @default(now())
+  updatedAt  DateTime            @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@map("subscriptions")
+}
+
+model MaintenanceRecord {
+  id           String               @id @default(uuid())
+  batteryId    String
+  technicianId String?
+  soh          Int
+  soc          Int
+  status       BatteryStatus
+  severity     MaintenanceSeverity?
+  notes        String?
+  battery      Battery              @relation(fields: [batteryId], references: [id], onDelete: Cascade)
+  technician   User?                @relation("TechnicianMaintenanceRecords", fields: [technicianId], references: [id], onDelete: SetNull)
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+
+  @@index([batteryId])
+  @@index([technicianId])
+  @@map("maintenance_records")
+}
+
+model SystemSetting {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  value       String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("system_settings")
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  adminId   String?
+  action    String
+  details   String?
+  admin     User?    @relation("AdminAuditLogs", fields: [adminId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+
+  @@index([adminId])
+  @@map("audit_logs")
+}

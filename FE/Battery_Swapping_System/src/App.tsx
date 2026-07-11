@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { RouteGuard } from './components/RouteGuard';
 import { UserRole } from './constants/roles';
+import { Permissions } from './constants/permissions';
 
 // Layouts
 import { MainLayout } from './layouts/MainLayout';
@@ -42,7 +43,7 @@ function App() {
           <Route
             path="booking"
             element={
-              <RouteGuard allowedRoles={[UserRole.MEMBER, UserRole.ADMIN]}>
+              <RouteGuard allowedRoles={[UserRole.MEMBER, UserRole.ADMIN]} requiredPermissions={[Permissions.BOOKINGS_CREATE]}>
                 <Booking />
               </RouteGuard>
             }
@@ -50,7 +51,7 @@ function App() {
           <Route
             path="payment"
             element={
-              <RouteGuard allowedRoles={[UserRole.MEMBER, UserRole.ADMIN]}>
+              <RouteGuard allowedRoles={[UserRole.MEMBER, UserRole.ADMIN]} requiredPermissions={[Permissions.PAYMENTS_MANAGE_SELF]}>
                 <Payment />
               </RouteGuard>
             }
@@ -58,7 +59,7 @@ function App() {
           <Route
             path="history"
             element={
-              <RouteGuard allowedRoles={[UserRole.MEMBER, UserRole.ADMIN]}>
+              <RouteGuard allowedRoles={[UserRole.MEMBER, UserRole.ADMIN]} requiredPermissions={[Permissions.SWAPS_READ_SELF]}>
                 <History />
               </RouteGuard>
             }
@@ -87,7 +88,7 @@ function App() {
           <Route
             path="staff/verify"
             element={
-              <RouteGuard allowedRoles={[UserRole.STAFF, UserRole.ADMIN]}>
+              <RouteGuard allowedRoles={[UserRole.STAFF, UserRole.ADMIN]} requiredPermissions={[Permissions.BOOKINGS_READ_ANY]}>
                 <VerifyCustomer />
               </RouteGuard>
             }
@@ -95,7 +96,7 @@ function App() {
           <Route
             path="staff/swap"
             element={
-              <RouteGuard allowedRoles={[UserRole.STAFF, UserRole.ADMIN]}>
+              <RouteGuard allowedRoles={[UserRole.STAFF, UserRole.ADMIN]} requiredPermissions={[Permissions.SWAPS_PROCESS]}>
                 <ProcessSwap />
               </RouteGuard>
             }
@@ -105,7 +106,7 @@ function App() {
           <Route
             path="tech/inspect"
             element={
-              <RouteGuard allowedRoles={[UserRole.TECHNICIAN, UserRole.ADMIN]}>
+              <RouteGuard allowedRoles={[UserRole.TECHNICIAN, UserRole.ADMIN]} requiredPermissions={[Permissions.BATTERIES_FAULTY_READ]}>
                 <BatteryInspect />
               </RouteGuard>
             }
@@ -113,7 +114,7 @@ function App() {
           <Route
             path="tech/maintenance"
             element={
-              <RouteGuard allowedRoles={[UserRole.TECHNICIAN, UserRole.ADMIN]}>
+              <RouteGuard allowedRoles={[UserRole.TECHNICIAN, UserRole.ADMIN]} requiredPermissions={[Permissions.MAINTENANCE_CREATE]}>
                 <MaintenanceForm />
               </RouteGuard>
             }
@@ -123,7 +124,7 @@ function App() {
           <Route
             path="manager/analytics"
             element={
-              <RouteGuard allowedRoles={[UserRole.MANAGER, UserRole.ADMIN]}>
+              <RouteGuard allowedRoles={[UserRole.MANAGER, UserRole.ADMIN]} requiredPermissions={[Permissions.REPORTS_READ]}>
                 <Analytics />
               </RouteGuard>
             }
@@ -131,7 +132,7 @@ function App() {
           <Route
             path="manager/inventory"
             element={
-              <RouteGuard allowedRoles={[UserRole.MANAGER, UserRole.ADMIN]}>
+              <RouteGuard allowedRoles={[UserRole.MANAGER, UserRole.ADMIN]} requiredPermissions={[Permissions.INVENTORY_READ]}>
                 <Inventory />
               </RouteGuard>
             }
@@ -141,7 +142,7 @@ function App() {
           <Route
             path="admin/users"
             element={
-              <RouteGuard allowedRoles={[UserRole.ADMIN]}>
+              <RouteGuard allowedRoles={[UserRole.ADMIN]} requiredPermissions={[Permissions.USERS_READ_ANY]}>
                 <UserManagement />
               </RouteGuard>
             }
@@ -149,7 +150,7 @@ function App() {
           <Route
             path="admin/stations"
             element={
-              <RouteGuard allowedRoles={[UserRole.ADMIN]}>
+              <RouteGuard allowedRoles={[UserRole.ADMIN]} requiredPermissions={[Permissions.SETTINGS_MANAGE]}>
                 <StationConfig />
               </RouteGuard>
             }
@@ -157,7 +158,7 @@ function App() {
           <Route
             path="admin/system"
             element={
-              <RouteGuard allowedRoles={[UserRole.ADMIN]}>
+              <RouteGuard allowedRoles={[UserRole.ADMIN]} requiredPermissions={[Permissions.SETTINGS_MANAGE]}>
                 <SystemConfig />
               </RouteGuard>
             }

@@ -1,5 +1,4 @@
 export const UserRole = {
-  GUEST: 'GUEST',
   MEMBER: 'MEMBER',
   STAFF: 'STAFF',
   TECHNICIAN: 'TECHNICIAN',

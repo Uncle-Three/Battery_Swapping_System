@@ -1,54 +1,55 @@
 import { useState, type FC, type FormEvent } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useAuth } from '../../../hooks/useAuth';
+import { BatteryCharging } from 'lucide-react';
 import { Button } from '../../../components/ui/Button';
 import { Input } from '../../../components/ui/Input';
-import { Dropdown } from '../../../components/ui/Dropdown';
-import { BatteryCharging } from 'lucide-react';
 import { UserRole } from '../../../constants/roles';
+import { useAuth } from '../../../hooks/useAuth';
+import { authService } from '../../../services/authService';
 
 export const Login: FC = () => {
-  const [email, setEmail] = useState('tuananh@gmail.com');
+  const [mode, setMode] = useState<'login' | 'register'>('login');
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('member@batteryswap.local');
   const [password, setPassword] = useState('123456');
-  const [role, setRole] = useState<UserRole>(UserRole.MEMBER);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
   const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
-  const from = (location.state as any)?.from?.pathname || '/';
+  const from = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname || '/';
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    setError('');
     setLoading(true);
-    
-    // Simulate login via hook
-    setTimeout(() => {
-      login('mock-token', {
-        id: 'u-1',
-        email,
-        name: email.split('@')[0],
-        role,
-        createdAt: new Date().toISOString(),
-      });
-      setLoading(false);
-      
-      // If role is MEMBER/GUEST, navigate to main home/stations. Else navigate to dashboard.
-      if (role === UserRole.MEMBER || role === UserRole.GUEST) {
+
+    try {
+      if (mode === 'register') {
+        await authService.register({
+          email,
+          password,
+          name,
+          ...(phone.trim() ? { phone: phone.trim() } : {}),
+        });
+      }
+
+      const data = await authService.login({ email, password });
+      login(data.accessToken, data.user);
+
+      if (data.user.role === UserRole.MEMBER) {
         navigate(from, { replace: true });
       } else {
         navigate('/dashboard', { replace: true });
       }
-    }, 600);
+    } catch {
+      setError(mode === 'register' ? 'Khong the dang ky tai khoan.' : 'Email hoac mat khau khong dung.');
+    } finally {
+      setLoading(false);
+    }
   };
-
-  const roleOptions = [
-    { value: UserRole.MEMBER, label: 'Khách hàng (MEMBER)' },
-    { value: UserRole.STAFF, label: 'Nhân viên trạm (STAFF)' },
-    { value: UserRole.TECHNICIAN, label: 'Kỹ thuật viên (TECHNICIAN)' },
-    { value: UserRole.MANAGER, label: 'Quản lý (MANAGER)' },
-    { value: UserRole.ADMIN, label: 'Quản trị viên (ADMIN)' },
-  ];
 
   return (
     <div className="min-h-[80vh] flex items-center justify-center p-4">
@@ -57,11 +58,22 @@ export const Login: FC = () => {
           <div className="p-3 bg-green-50 dark:bg-green-950/30 text-green-600 dark:text-green-500 rounded-2xl">
             <BatteryCharging className="h-8 w-8" />
           </div>
-          <h2 className="text-2xl font-black text-slate-900 dark:text-white">Đăng nhập hệ thống</h2>
-          <p className="text-sm text-slate-550">Mô phỏng đăng nhập các vai trò (roles)</p>
+          <h2 className="text-2xl font-black text-slate-900 dark:text-white">
+            {mode === 'login' ? 'Đăng nhập hệ thống' : 'Đăng ký tài khoản'}
+          </h2>
+          <p className="text-sm text-slate-550">
+            {mode === 'login' ? 'Sử dụng tài khoản đã có' : 'Tạo tài khoản thành viên mới'}
+          </p>
         </div>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          {mode === 'register' && (
+            <>
+              <Input label="Họ tên" value={name} onChange={(e) => setName(e.target.value)} required />
+              <Input label="Số điện thoại" value={phone} onChange={(e) => setPhone(e.target.value)} />
+            </>
+          )}
+
           <Input
             label="Địa chỉ Email"
             type="email"
@@ -78,19 +90,26 @@ export const Login: FC = () => {
             required
           />
 
-          <Dropdown
-            label="Chọn vai trò đăng nhập (Mô phỏng)"
-            options={roleOptions}
-            selectedValue={role}
-            onChange={(val) => setRole(val as UserRole)}
-          />
+          {error && <p className="text-sm font-medium text-red-600">{error}</p>}
 
           <Button type="submit" loading={loading} className="w-full mt-2">
-            Đăng nhập
+            {mode === 'login' ? 'Đăng nhập' : 'Đăng ký và đăng nhập'}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              setMode(mode === 'login' ? 'register' : 'login');
+              setError('');
+            }}
+            className="w-full"
+          >
+            {mode === 'login' ? 'Tạo tài khoản mới' : 'Đã có tài khoản'}
           </Button>
         </form>
       </div>
     </div>
   );
 };
+
 export default Login;

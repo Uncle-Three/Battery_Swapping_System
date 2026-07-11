@@ -19,14 +19,20 @@ import {
   Sun,
   Moon,
 } from 'lucide-react';
+import { Permissions } from '../constants/permissions';
+import { authService } from '../services/authService';
 
 export const DashboardLayout: FC = () => {
-  const { user, logout, isStaff, isTechnician, isManager, isAdmin } = useAuth();
+  const { user, logout, hasPermission } = useAuth();
   const { sidebarOpen, toggleSidebar, theme, toggleTheme } = useUIStore();
   const navigate = useNavigate();
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    try {
+      await authService.logout();
+    } finally {
+      logout();
+    }
     navigate('/login');
   };
 
@@ -37,58 +43,58 @@ export const DashboardLayout: FC = () => {
       path: '/dashboard/staff/verify',
       label: 'Xác thực khách',
       icon: UserCheck,
-      visible: isStaff || isAdmin,
+      visible: hasPermission(Permissions.BOOKINGS_READ_ANY),
     },
     {
       path: '/dashboard/staff/swap',
       label: 'Giao dịch đổi pin',
       icon: RefreshCw,
-      visible: isStaff || isAdmin,
+      visible: hasPermission(Permissions.SWAPS_PROCESS),
     },
     // Technician routes
     {
       path: '/dashboard/tech/inspect',
       label: 'Kiểm tra pin lỗi',
       icon: AlertTriangle,
-      visible: isTechnician || isAdmin,
+      visible: hasPermission(Permissions.BATTERIES_FAULTY_READ),
     },
     {
       path: '/dashboard/tech/maintenance',
       label: 'Ghi chép bảo trì',
       icon: ClipboardList,
-      visible: isTechnician || isAdmin,
+      visible: hasPermission(Permissions.MAINTENANCE_CREATE),
     },
     // Manager routes
     {
       path: '/dashboard/manager/analytics',
       label: 'Báo cáo doanh thu',
       icon: BarChart3,
-      visible: isManager || isAdmin,
+      visible: hasPermission(Permissions.REPORTS_READ),
     },
     {
       path: '/dashboard/manager/inventory',
       label: 'Tồn kho pin',
       icon: Package,
-      visible: isManager || isAdmin,
+      visible: hasPermission(Permissions.INVENTORY_READ),
     },
     // Admin routes
     {
       path: '/dashboard/admin/users',
       label: 'Quản lý người dùng',
       icon: Users,
-      visible: isAdmin,
+      visible: hasPermission(Permissions.USERS_READ_ANY),
     },
     {
       path: '/dashboard/admin/stations',
       label: 'Cấu hình trạm sạc',
       icon: Sliders,
-      visible: isAdmin,
+      visible: hasPermission(Permissions.SETTINGS_MANAGE),
     },
     {
       path: '/dashboard/admin/system',
       label: 'Thiết lập hệ thống',
       icon: Settings,
-      visible: isAdmin,
+      visible: hasPermission(Permissions.SETTINGS_MANAGE),
     },
   ];
 

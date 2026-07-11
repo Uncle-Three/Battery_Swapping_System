@@ -1,37 +1,52 @@
-import apiClient from './apiClient';
+import apiClient, { unwrapData } from './apiClient';
 import { API_ENDPOINTS } from '../constants/endpoints';
-import type { User, Profile } from '../types';
+import type { LoginCredentials, Profile, RegisterInput, UpdateProfileInput, User } from '../types';
+import { mapProfileDto, mapUserDto } from './responseMappers';
+
+type AuthResponse = {
+  accessToken: string;
+  tokenType: 'Bearer';
+  user: User;
+};
+
+const sanitizeRegisterInput = (data: RegisterInput): RegisterInput => ({
+  email: data.email,
+  password: data.password,
+  name: data.name,
+  ...(data.phone ? { phone: data.phone } : {}),
+  ...(data.avatarUrl ? { avatarUrl: data.avatarUrl } : {}),
+});
+
+const sanitizeProfileInput = (data: UpdateProfileInput): Omit<UpdateProfileInput, 'fullName'> => ({
+  ...(data.name !== undefined ? { name: data.name } : {}),
+  ...(data.phone !== undefined ? { phone: data.phone } : {}),
+  ...(data.avatarUrl !== undefined ? { avatarUrl: data.avatarUrl } : {}),
+});
 
 export const authService = {
-  login: async (credentials: any): Promise<{ token: string; user: User }> => {
-    // In actual implementation, request to API_ENDPOINTS.AUTH.LOGIN
-    // return (await apiClient.post(API_ENDPOINTS.AUTH.LOGIN, credentials)).data;
-    
-    // Mock implementation for development
-    console.log('Mock login called with:', credentials);
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        resolve({
-          token: 'mock-jwt-token',
-          user: {
-            id: 'u-1',
-            email: credentials.email || 'customer@example.com',
-            name: credentials.email?.split('@')[0] || 'John Doe',
-            role: credentials.role || 'MEMBER',
-            createdAt: new Date().toISOString(),
-          },
-        });
-      }, 500);
-    });
+  login: async (credentials: LoginCredentials): Promise<AuthResponse> => {
+    const response = await apiClient.post(API_ENDPOINTS.AUTH.LOGIN, credentials);
+    const data = unwrapData<AuthResponse>(response);
+    return { ...data, user: mapUserDto(data.user) };
   },
 
-  register: async (data: any): Promise<{ user: User }> => {
-    const response = await apiClient.post(API_ENDPOINTS.AUTH.REGISTER, data);
-    return response.data;
+  register: async (data: RegisterInput): Promise<{ user: User }> => {
+    const response = await apiClient.post(API_ENDPOINTS.AUTH.REGISTER, sanitizeRegisterInput(data));
+    const result = unwrapData<{ user: User }>(response);
+    return { user: mapUserDto(result.user) };
   },
 
   getProfile: async (): Promise<Profile> => {
-    const response = await apiClient.get(API_ENDPOINTS.AUTH.PROFILE);
-    return response.data;
+    const response = await apiClient.get(API_ENDPOINTS.USERS.ME);
+    return mapProfileDto(unwrapData<Profile>(response));
+  },
+
+  updateProfile: async (data: UpdateProfileInput): Promise<Profile> => {
+    const response = await apiClient.patch(API_ENDPOINTS.USERS.ME, sanitizeProfileInput(data));
+    return mapProfileDto(unwrapData<Profile>(response));
+  },
+
+  logout: async (): Promise<void> => {
+    await apiClient.post(API_ENDPOINTS.AUTH.LOGOUT);
   },
 };

@@ -2,13 +2,18 @@ import React from 'react';
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { BatteryCharging, LogOut, User as UserIcon, History, MapPin, Calendar, Home } from 'lucide-react';
+import { authService } from '../services/authService';
 
 export const MainLayout: React.FC = () => {
   const { isAuthenticated, user, logout } = useAuth();
   const navigate = useNavigate();
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    try {
+      await authService.logout();
+    } finally {
+      logout();
+    }
     navigate('/login');
   };
 

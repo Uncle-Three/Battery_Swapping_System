@@ -1,8 +1,9 @@
 import { useAuthStore } from '../store/authStore';
 import { UserRole } from '../constants/roles';
+import { hasPermission, type Permission } from '../constants/permissions';
 
 export const useAuth = () => {
-  const { user, token, isAuthenticated, login, logout, updateUser } = useAuthStore();
+  const { user, token, isAuthenticated, login, logout, updateUser, setToken } = useAuthStore();
 
   const isRole = (role: UserRole) => {
     return user?.role === role;
@@ -21,7 +22,9 @@ export const useAuth = () => {
     hasAnyRole,
     login,
     logout,
+    setToken,
     updateUser,
+    hasPermission: (permission: Permission) => (user ? hasPermission(user.role, permission) : false),
     isAdmin: isRole(UserRole.ADMIN),
     isManager: isRole(UserRole.MANAGER),
     isTechnician: isRole(UserRole.TECHNICIAN),

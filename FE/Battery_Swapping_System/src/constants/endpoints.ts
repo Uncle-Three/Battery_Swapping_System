@@ -2,7 +2,18 @@ export const API_ENDPOINTS = {
   AUTH: {
     LOGIN: '/auth/login',
     REGISTER: '/auth/register',
-    PROFILE: '/auth/profile',
+    REFRESH: '/auth/refresh',
+    LOGOUT: '/auth/logout',
+  },
+  USERS: {
+    ME: '/users/me',
+  },
+  ADMIN: {
+    USERS: '/admin/users',
+    USER_ROLE: (id: string) => `/admin/users/${id}/role`,
+    USER_STATUS: (id: string) => `/admin/users/${id}/status`,
+    ROLES: '/admin/roles',
+    PERMISSIONS: '/admin/permissions',
   },
   STATIONS: {
     LIST: '/stations',

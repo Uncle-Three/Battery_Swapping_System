@@ -17,6 +17,8 @@ type AdminServiceDependencies = {
     | "findUserById"
     | "findRoleByName"
     | "countActiveAdmins"
+    | "findSettings"
+    | "upsertSettingWithAudit"
     | "updateUserRoleWithAudit"
     | "updateUserStatusWithAudit"
   >;
@@ -24,7 +26,9 @@ type AdminServiceDependencies = {
 
 export const createAdminService = (dependencies: AdminServiceDependencies) => ({
   overview: async () => ({ status: "ok" }),
-  auditLogs: () => auditLogService.list(),
+  auditLogs: (params?: { limit?: number; offset?: number; action?: string }) => auditLogService.list(params),
+  settings: () => dependencies.repository.findSettings(),
+  updateSetting: (adminId: string, key: string, value: string) => dependencies.repository.upsertSettingWithAudit(adminId, key, value),
 
   listUsers: async () => {
     const users = await dependencies.repository.findUsers();

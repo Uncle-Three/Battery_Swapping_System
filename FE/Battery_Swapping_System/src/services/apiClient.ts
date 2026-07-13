@@ -8,7 +8,51 @@ const apiClient = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  timeout: 15_000,
 });
+
+type ApiErrorPayload = { code?: string; message?: string; errors?: unknown; requestId?: string };
+
+const apiMessageTranslations: Array<[RegExp, string]> = [
+  [/^Booking not found at this station\.?$/i, 'Không tìm thấy lịch thay pin tại trạm này.'],
+  [/^Booking not found\.?$/i, 'Không tìm thấy lịch thay pin.'],
+  [/^Station not found\.?$/i, 'Không tìm thấy trạm.'],
+  [/^User not found\.?$/i, 'Không tìm thấy người dùng.'],
+  [/^Staff is not assigned to this station\.?$/i, 'Nhân viên chưa được phân công vào trạm này.'],
+  [/^Booking is not assigned to (the )?selected bay\.?$/i, 'Lịch thay pin không thuộc khoang đã chọn.'],
+  [/^Selected service bay no longer has (an )?active reservation\.?$/i, 'Khoang đã chọn không còn được giữ cho lịch này.'],
+  [/^Selected service bay is not available.*$/i, 'Khoang đã chọn hiện không khả dụng.'],
+  [/^Check-in is only allowed.*$/i, 'Chỉ có thể tiếp nhận khách trong vòng 30 phút trước lịch hẹn.'],
+  [/^A swap workflow already exists.*$/i, 'Lịch này đã có quy trình thay pin đang được xử lý.'],
+  [/^Booking is missing (a )?vehicle.*$/i, 'Lịch thay pin chưa có thông tin xe.'],
+  [/^Booking is missing (a )?scheduled time.*$/i, 'Lịch thay pin chưa có thời gian hẹn.'],
+  [/^Scanned battery.*not.*reserved.*$/i, 'Pin vừa quét không phải pin được giữ cho lịch này.'],
+  [/^Unauthorized\.?$/i, 'Bạn chưa đăng nhập hoặc phiên đăng nhập đã hết hạn.'],
+  [/^Forbidden\.?$/i, 'Bạn không có quyền thực hiện thao tác này.'],
+  [/^Internal server error\.?$/i, 'Máy chủ gặp lỗi. Vui lòng thử lại sau.'],
+];
+
+const translateApiMessage = (message?: string) => {
+  if (!message) return 'Yêu cầu không thành công.';
+  return apiMessageTranslations.find(([pattern]) => pattern.test(message))?.[1] ?? message;
+};
+
+export class ApiClientError extends Error {
+  readonly status?: number;
+  readonly code?: string;
+  readonly requestId?: string;
+  readonly details?: unknown;
+  constructor(message: string, status?: number, code?: string, requestId?: string, details?: unknown) {
+    super(message);
+    this.name = 'ApiClientError';
+    this.status = status;
+    this.code = code;
+    this.requestId = requestId;
+    this.details = details;
+  }
+}
+
+export const getApiErrorMessage = (error: unknown, fallback = 'Không thể kết nối tới hệ thống.') => error instanceof Error ? error.message : fallback;
 
 type ApiResponse<T> = {
   success: boolean;
@@ -80,7 +124,9 @@ apiClient.interceptors.response.use(
         originalRequest.headers.Authorization = `Bearer ${accessToken}`;
         return apiClient(originalRequest);
       } catch (refreshError) {
-        clearAuthAndRedirect();
+        if (refreshError instanceof ApiClientError && [401, 403].includes(refreshError.status ?? 0)) {
+          clearAuthAndRedirect();
+        }
         return Promise.reject(refreshError);
       }
     }
@@ -89,7 +135,10 @@ apiClient.interceptors.response.use(
       clearAuthAndRedirect();
     }
 
-    return Promise.reject(error);
+    const payload = error.response?.data as ApiErrorPayload | undefined;
+    if (error.code === 'ECONNABORTED') return Promise.reject(new ApiClientError('Yêu cầu đã hết thời gian chờ. Vui lòng thử lại.', error.response?.status));
+    if (!error.response) return Promise.reject(new ApiClientError('Không thể kết nối tới máy chủ. Hãy kiểm tra backend đang chạy.'));
+    return Promise.reject(new ApiClientError(translateApiMessage(payload?.message), error.response.status, payload?.code, payload?.requestId, payload?.errors));
   }
 );
 

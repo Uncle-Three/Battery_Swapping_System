@@ -1,115 +1,72 @@
-import { useState, type FC, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { Input } from '../../../../components/ui/Input';
 import { Button } from '../../../../components/ui/Button';
 import { Table } from '../../../../components/ui/Table';
-import { Settings, ShieldAlert, Search } from 'lucide-react';
+import { adminService } from '../../../../services/adminService';
+import { statusLabel } from '../../../../utils/viLabels';
 
-export const SystemConfig: FC = () => {
-  const [swapPrice, setSwapPrice] = useState('45000');
-  const [bookingLimit, setBookingLimit] = useState('30');
-  const [saved, setSaved] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
+type AuditLog = { id: string; adminName?: string; adminEmail?: string; action: string; details?: string; time: string };
 
-  // Mock system audit logs
-  const [auditLogs] = useState([
-    { id: 'log-1', adminName: 'Đỗ Minh Phú', action: 'Thay đổi đơn giá đổi pin', details: '40,000 -> 45,000 VND', time: '2026-07-08 14:22' },
-    { id: 'log-2', adminName: 'Đỗ Minh Phú', action: 'Bảo trì trạm sạc Quận Bình Thạnh', details: 'Status: ACTIVE -> MAINTENANCE', time: '2026-07-08 10:15' },
-    { id: 'log-3', adminName: 'Lê Thị Thu', action: 'Nâng quyền hạn tài khoản', details: 'User ID u-3: MEMBER -> STAFF', time: '2026-07-07 16:45' },
-  ]);
+export const SystemConfig = () => {
+  const [swapPrice, setSwapPrice] = useState('');
+  const [bookingLimit, setBookingLimit] = useState('');
+  const [logs, setLogs] = useState<AuditLog[]>([]);
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
 
-  const handleSave = (e: FormEvent) => {
-    e.preventDefault();
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+  const load = async () => {
+    const [settings, auditLogs] = await Promise.all([
+      adminService.getSettings(),
+      adminService.getAuditLogs({ limit: 10 }),
+    ]);
+    const values = new Map(settings.map((item) => [item.key, item.value]));
+    const storedSwapPrice = values.get('STANDARD_SWAP_PRICE');
+    const storedBookingLimit = values.get('BOOKING_EXPIRY_MINUTES');
+    setSwapPrice(storedSwapPrice ?? '');
+    setBookingLimit(storedBookingLimit ?? '');
+    setLogs(auditLogs.items);
+    if (!storedSwapPrice || !storedBookingLimit) {
+      setError('Database đang thiếu STANDARD_SWAP_PRICE hoặc BOOKING_EXPIRY_MINUTES. Hãy nhập giá trị thật trước khi lưu.');
+    }
   };
 
-  const filteredLogs = auditLogs.filter(log => 
-    log.adminName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    log.action.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    log.details.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  useEffect(() => {
+    void load().catch((cause) => setError(cause instanceof Error ? cause.message : 'Không thể tải cấu hình'));
+  }, []);
 
-  return (
-    <div className="flex flex-col gap-6 text-left max-w-5xl">
-      <div className="flex items-center gap-3">
-        <div className="p-2 bg-green-50 dark:bg-green-950/30 text-green-600 dark:text-green-500 rounded-lg">
-          <Settings className="h-6 w-6" />
-        </div>
-        <div>
-          <h2 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white">
-            Tham số & Nhật ký Hệ thống
-          </h2>
-          <p className="text-sm text-slate-550 dark:text-slate-400 mt-0.5">
-            Cấu hình các chỉ số nghiệp vụ chung và theo dõi lịch sử thao tác quản trị viên (Audit Log).
-          </p>
-        </div>
-      </div>
+  const save = async (event: FormEvent) => {
+    event.preventDefault();
+    setSaving(true);
+    setError('');
+    setMessage('');
+    try {
+      await Promise.all([
+        adminService.updateSetting('STANDARD_SWAP_PRICE', swapPrice),
+        adminService.updateSetting('BOOKING_EXPIRY_MINUTES', bookingLimit),
+      ]);
+      setMessage('Đã lưu cấu hình vào MongoDB.');
+      await load();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Không thể lưu cấu hình');
+    } finally {
+      setSaving(false);
+    }
+  };
 
-      <div className="grid md:grid-cols-3 gap-6">
-        {/* System Settings Form */}
-        <form onSubmit={handleSave} className="bg-white dark:bg-slate-900 border border-slate-205 dark:border-slate-800 rounded-xl p-5 shadow-sm flex flex-col gap-4 h-fit md:col-span-1">
-          <h3 className="font-bold text-sm text-slate-700 dark:text-slate-300 uppercase tracking-wider">
-            Cấu hình tham số
-          </h3>
-          <Input
-            label="Đơn giá đổi pin tiêu chuẩn (VND)"
-            type="number"
-            value={swapPrice}
-            onChange={(e) => setSwapPrice(e.target.value)}
-            required
-          />
-          <Input
-            label="Thời gian giữ slot tối đa mặc định (Phút)"
-            type="number"
-            value={bookingLimit}
-            onChange={(e) => setBookingLimit(e.target.value)}
-            required
-          />
-          {saved && (
-            <span className="text-xs text-green-600 font-semibold">
-              Đã lưu tham số hệ thống thành công!
-            </span>
-          )}
-          <Button type="submit" className="w-full mt-2">
-            Lưu thay đổi
-          </Button>
-        </form>
-
-        {/* Audit Logs Table */}
-        <div className="md:col-span-2 flex flex-col gap-4">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <h3 className="font-bold text-sm text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-              <ShieldAlert className="h-5 w-5 text-slate-400" />
-              <span>Audit Logs - Lịch sử quản trị</span>
-            </h3>
-
-            <div className="relative w-full sm:max-w-xs">
-              <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                <Search className="h-4 w-4" />
-              </span>
-              <input
-                type="text"
-                className="w-full pl-9 pr-4 py-2 border border-slate-250 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-                placeholder="Tìm admin, hành động hoặc nội dung..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </div>
-          </div>
-
-          <Table headers={['Admin', 'Hành động', 'Nội dung chi tiết', 'Thời gian']}>
-            {filteredLogs.map((log) => (
-              <tr key={log.id} className="hover:bg-slate-55 dark:hover:bg-slate-800/40 transition-colors">
-                <td className="px-6 py-4 font-bold text-slate-850 dark:text-slate-100">{log.adminName}</td>
-                <td className="px-6 py-4 font-semibold text-xs text-slate-750 dark:text-slate-350">{log.action}</td>
-                <td className="px-6 py-4 font-mono text-xs text-slate-500">{log.details}</td>
-                <td className="px-6 py-4 text-xs text-slate-405">{log.time}</td>
-              </tr>
-            ))}
-          </Table>
-        </div>
-      </div>
-    </div>
-  );
+  return <div className="max-w-5xl space-y-6 text-left">
+    <div><h2 className="text-2xl font-bold">Cấu hình và nhật ký hệ thống</h2><p className="text-sm text-slate-500">Tham số được đọc và lưu trực tiếp trong MongoDB.</p></div>
+    {error && <p className="bg-red-50 p-3 text-red-700">{error}</p>}
+    {message && <p className="bg-green-50 p-3 text-green-700">{message}</p>}
+    <form onSubmit={save} className="grid gap-4 rounded-xl border bg-white p-5 dark:bg-slate-900 sm:grid-cols-2">
+      <Input label="Đơn giá đổi pin (VND)" type="number" min={0} value={swapPrice} onChange={(event) => setSwapPrice(event.target.value)} required />
+      <Input label="Thời gian giữ chỗ (phút)" type="number" min={1} value={bookingLimit} onChange={(event) => setBookingLimit(event.target.value)} required />
+      <Button type="submit" loading={saving} disabled={!swapPrice || !bookingLimit}>Lưu cấu hình</Button>
+    </form>
+    <Table headers={['Quản trị viên', 'Hành động', 'Chi tiết', 'Thời gian']}>
+      {logs.map((log) => <tr key={log.id}><td className="px-6 py-3">{log.adminName ?? log.adminEmail ?? 'Hệ thống'}</td><td className="px-6 py-3 font-semibold">{statusLabel(log.action)}</td><td className="px-6 py-3 text-xs">{log.details ?? '—'}</td><td className="px-6 py-3 text-xs">{new Date(log.time).toLocaleString('vi-VN')}</td></tr>)}
+    </Table>
+  </div>;
 };
+
 export default SystemConfig;

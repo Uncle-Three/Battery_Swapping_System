@@ -33,6 +33,13 @@ export const adminRepository = {
     }),
 
   countActiveAdmins: () => prisma.user.count({ where: activeAdminWhere }),
+  findSettings: () => prisma.systemSetting.findMany({ orderBy: { key: "asc" } }),
+  upsertSettingWithAudit: (adminId: string, key: string, value: string) => prisma.$transaction(async (tx) => {
+    const before = await tx.systemSetting.findUnique({ where: { key } });
+    const setting = await tx.systemSetting.upsert({ where: { key }, update: { value }, create: { key, value } });
+    await tx.auditLog.create({ data: { adminId, actorRole: "ADMIN", entityType: "SystemSetting", entityId: setting.id, action: "UPSERT_SYSTEM_SETTING", before: before ? { key, value: before.value } : undefined, after: { key, value } } });
+    return setting;
+  }),
 
   updateUserRoleWithAudit: (input: {
     adminId: string;

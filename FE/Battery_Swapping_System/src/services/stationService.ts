@@ -1,50 +1,25 @@
-import apiClient from './apiClient';
+import apiClient, { unwrapData } from './apiClient';
 import { API_ENDPOINTS } from '../constants/endpoints';
 import type { Station } from '../types';
 
+export type AvailabilityResult = {
+  batteryTypeId: string;
+  slots: Array<{ id: string; slotNumber: number; batteries: Array<{ id: string; serialNumber: string }> }>;
+};
+export type BookingScheduleWindow = { id: string; serviceBayId: string; bayCode: string; bayName: string; startsAt: string; endsAt: string; durationMinutes: number; status: 'AVAILABLE' | 'FULL' | 'PAST'; batterySlotId: string | null; availableBatteryCount: number };
+export type BookingSchedule = { station: { id: string; name: string; openingTime: string; closingTime: string }; date: string; durationMinutes: number; windows: BookingScheduleWindow[] };
+
 export const stationService = {
-  getStations: async (): Promise<Station[]> => {
-    // const response = await apiClient.get(API_ENDPOINTS.STATIONS.LIST);
-    // return response.data;
-
-    // Mock Stations data
-    return [
-      {
-        id: 'st-1',
-        name: 'Trạm Sạc GreenCharge Quận 1',
-        address: '120 Lê Lai, Phường Bến Thành, Quận 1, TP. HCM',
-        latitude: 10.7719,
-        longitude: 106.6917,
-        status: 'ACTIVE',
-        slots: [
-          { id: 'sl-1', slotNumber: 1, status: 'READY', battery: { id: 'b-1', serialNumber: 'B001', soc: 98, soh: 95, temperature: 35, voltage: 48, status: 'READY', lastUpdated: new Date().toISOString() } },
-          { id: 'sl-2', slotNumber: 2, status: 'CHARGING', battery: { id: 'b-2', serialNumber: 'B002', soc: 45, soh: 92, temperature: 42, voltage: 46, status: 'CHARGING', lastUpdated: new Date().toISOString() } },
-          { id: 'sl-3', slotNumber: 3, status: 'EMPTY' },
-        ],
-      },
-      {
-        id: 'st-2',
-        name: 'Trạm Sạc GreenCharge Quận 7',
-        address: '56 Nguyễn Thị Thập, Tân Hưng, Quận 7, TP. HCM',
-        latitude: 10.7412,
-        longitude: 106.7013,
-        status: 'ACTIVE',
-        slots: [
-          { id: 'sl-4', slotNumber: 1, status: 'READY', battery: { id: 'b-3', serialNumber: 'B003', soc: 100, soh: 97, temperature: 33, voltage: 48, status: 'READY', lastUpdated: new Date().toISOString() } },
-          { id: 'sl-5', slotNumber: 2, status: 'MAINTENANCE', battery: { id: 'b-4', serialNumber: 'B004', soc: 10, soh: 60, temperature: 55, voltage: 40, status: 'MAINTENANCE', lastUpdated: new Date().toISOString() } },
-          { id: 'sl-6', slotNumber: 3, status: 'READY', battery: { id: 'b-5', serialNumber: 'B005', soc: 99, soh: 96, temperature: 34, voltage: 48, status: 'READY', lastUpdated: new Date().toISOString() } },
-        ],
-      },
-    ] as any;
-  },
-
-  getStationDetails: async (id: string): Promise<Station> => {
-    const response = await apiClient.get(API_ENDPOINTS.STATIONS.DETAILS(id));
-    return response.data;
-  },
-
-  getStationSlots: async (id: string) => {
-    const response = await apiClient.get(API_ENDPOINTS.STATIONS.SLOTS(id));
-    return response.data;
-  },
+  getStations: async (): Promise<Station[]> =>
+    unwrapData<Station[]>(await apiClient.get(API_ENDPOINTS.STATIONS.LIST)),
+  getStationDetails: async (id: string): Promise<Station> =>
+    unwrapData<Station>(await apiClient.get(API_ENDPOINTS.STATIONS.DETAILS(id))),
+  getStationSlots: async (id: string) =>
+    unwrapData(await apiClient.get(API_ENDPOINTS.STATIONS.SLOTS(id))),
+  getAvailability: async (stationId: string, vehicleId: string, startsAt: string, endsAt: string): Promise<AvailabilityResult[]> =>
+    unwrapData<AvailabilityResult[]>(await apiClient.get(API_ENDPOINTS.STATIONS.AVAILABILITY(stationId), {
+      params: { vehicleId, startsAt, endsAt },
+    })),
+  getBookingSchedule: async (stationId: string, vehicleId: string, date: string, durationMinutes: 30 | 60): Promise<BookingSchedule> =>
+    unwrapData<BookingSchedule>(await apiClient.get(API_ENDPOINTS.STATIONS.BOOKING_SCHEDULE(stationId), { params: { vehicleId, date, durationMinutes } })),
 };

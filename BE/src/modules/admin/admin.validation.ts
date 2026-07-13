@@ -1,14 +1,15 @@
 import { z } from "zod";
 import { UserStatus } from "@prisma/client";
 import { Roles } from "../../constants/roles";
+import { objectIdSchema } from "../../common/validation/object-id";
 
 export const updateSystemSettingSchema = z.object({
-  key: z.string().min(1),
   value: z.string().min(1),
-});
+}).strict();
+export const systemSettingParamsSchema = z.object({ key: z.string().regex(/^[a-z][a-z0-9_.-]{1,99}$/i) });
 
 export const adminUserParamsSchema = z.object({
-  id: z.string().min(1),
+  id: objectIdSchema,
 });
 
 export const updateAdminUserRoleSchema = z
@@ -22,3 +23,10 @@ export const updateAdminUserStatusSchema = z
     status: z.enum([UserStatus.ACTIVE, UserStatus.INACTIVE, UserStatus.BLOCKED]),
   })
   .strict();
+
+export const auditLogsQuerySchema = z.object({
+  limit: z.coerce.number().min(1).max(100).optional().default(50),
+  offset: z.coerce.number().min(0).optional().default(0),
+  action: z.string().optional(),
+});
+

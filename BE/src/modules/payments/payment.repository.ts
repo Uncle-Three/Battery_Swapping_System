@@ -1,6 +1,8 @@
-import { PrismaClient, PaymentMethod, PaymentStatus } from "@prisma/client";
-
-const prisma = new PrismaClient();
+import {
+  BatteryOperationalStatus, BookingStatus, InvoiceStatus, NotificationType,
+  PaymentMethod, PaymentStatus, ReplacementRequestStatus, ReservationStatus, SwapStatus,
+} from "@prisma/client";
+import { prisma } from "../../config/database";
 
 export const paymentRepository = {
   // ── Wallet ────────────────────────────────────────────────────────────────
@@ -42,7 +44,7 @@ export const paymentRepository = {
 
   /** Tìm PaymentTransaction theo vnpTxnRef */
   findByVNPayTxnRef: async (txnRef: string) => {
-    return prisma.paymentTransaction.findUnique({
+    return prisma.paymentTransaction.findFirst({
       where: { vnpTxnRef: txnRef },
     });
   },
@@ -54,17 +56,20 @@ export const paymentRepository = {
    * Dùng Prisma transaction để đảm bảo atomic.
    */
   confirmVNPayTopup: async (txnId: string, userId: string, amount: number) => {
-    return prisma.$transaction([
-      prisma.paymentTransaction.update({
-        where: { id: txnId },
+    return prisma.$transaction(async (tx) => {
+      const claimed = await tx.paymentTransaction.updateMany({
+        where: { id: txnId, status: PaymentStatus.PENDING },
         data: { status: PaymentStatus.SUCCESS },
-      }),
-      prisma.wallet.upsert({
+      });
+      if (claimed.count !== 1) return { credited: false };
+
+      await tx.wallet.upsert({
         where: { userId },
         update: { balance: { increment: amount } },
         create: { userId, balance: amount },
-      }),
-    ]);
+      });
+      return { credited: true };
+    });
   },
 
   /** Đánh dấu PaymentTransaction thất bại */
@@ -75,8 +80,102 @@ export const paymentRepository = {
     });
   },
 
-  // ── Legacy stubs (giữ tương thích code cũ) ───────────────────────────────
+  // ── Booking Payment ───────────────────────────────────────────────────────
 
-  createTopup: async (userId: string, input: unknown) => ({ userId, input }),
-  purchaseSubscription: async (userId: string, input: unknown) => ({ userId, input }),
+  /** Lấy invoice liên kết với swap */
+  findInvoiceBySwapId: async (swapId: string) => {
+    return prisma.invoice.findFirst({ where: { transactionId: swapId } });
+  },
+
+  /** Lấy thông tin payment status của booking (invoice + payment transactions) */
+  findBookingPaymentStatus: async (userId: string, bookingId: string) => {
+    const booking = await prisma.booking.findFirst({
+      where: { id: bookingId, userId },
+      select: { id: true, status: true, costEstimate: true, stationId: true },
+    });
+    if (!booking) return null;
+    const swap = await prisma.swapTransaction.findFirst({
+      where: { bookingId },
+      include: {
+        invoice: true,
+        payments: { orderBy: { createdAt: "desc" } },
+      },
+    });
+    return { booking, swap };
+  },
+
+  /** Tạo PaymentTransaction PENDING cho VNPay booking payment */
+  createPendingVNPayBookingPayment: async (
+    userId: string,
+    swapId: string,
+    amount: number,
+    txnRef: string,
+    description: string,
+  ) => {
+    return prisma.paymentTransaction.create({
+      data: {
+        userId,
+        swapTransactionId: swapId,
+        amount,
+        paymentMethod: PaymentMethod.VNPAY,
+        status: PaymentStatus.PENDING,
+        description,
+        vnpTxnRef: txnRef,
+      },
+    });
+  },
+
+  /** Confirm a booking payment and finalize the battery replacement atomically. */
+  confirmVNPayBookingPayment: async (txnId: string, amount: number) => {
+    return prisma.$transaction(async (tx) => {
+      const transaction = await tx.paymentTransaction.findUnique({ where: { id: txnId } });
+      if (!transaction?.swapTransactionId || transaction.status !== PaymentStatus.PENDING) return { completed: false };
+
+      const swap = await tx.swapTransaction.findUnique({
+        where: { id: transaction.swapTransactionId },
+        include: { booking: true, batteryIn: true, batteryOut: true, inspection: true },
+      });
+      if (!swap?.booking || !swap.vehicleId || !swap.batteryOutId || !swap.batteryOut || !swap.staffId) {
+        throw new Error("Swap is missing data required for payment completion");
+      }
+      if (swap.workflowStatus !== SwapStatus.PAYMENT_PENDING) return { completed: false };
+
+      const claimed = await tx.paymentTransaction.updateMany({
+        where: { id: txnId, status: PaymentStatus.PENDING },
+        data: { status: PaymentStatus.SUCCESS },
+      });
+      if (claimed.count !== 1) return { completed: false };
+
+      await tx.invoice.update({ where: { transactionId: swap.id }, data: { amount, paymentMethod: PaymentMethod.VNPAY, status: InvoiceStatus.PAID } });
+      await tx.vehicleBatteryAssignment.create({ data: { vehicleId: swap.vehicleId, batteryId: swap.batteryOutId, assignedById: swap.staffId, active: true } });
+      await tx.battery.update({ where: { id: swap.batteryOutId }, data: { operationalStatus: BatteryOperationalStatus.INSTALLED, slotId: null, stationId: null } });
+      await tx.batteryReservation.updateMany({ where: { bookingId: swap.booking.id, status: ReservationStatus.ACTIVE }, data: { status: ReservationStatus.CONSUMED } });
+      await tx.booking.update({ where: { id: swap.booking.id }, data: { status: BookingStatus.COMPLETED } });
+      await tx.bayReservation.updateMany({ where: { bookingId: swap.booking.id, status: ReservationStatus.ACTIVE }, data: { status: ReservationStatus.CONSUMED } });
+      await tx.vehicle.update({ where: { id: swap.vehicleId }, data: { status: "ACTIVE" } });
+      if (swap.booking.replacementRequestId) {
+        await tx.replacementRequest.updateMany({
+          where: { id: swap.booking.replacementRequestId, status: { notIn: [ReplacementRequestStatus.COMPLETED, ReplacementRequestStatus.CANCELLED] } },
+          data: { status: ReplacementRequestStatus.COMPLETED },
+        });
+      }
+      await tx.batteryLifecycleEvent.create({ data: { batteryId: swap.batteryOutId, actorId: swap.staffId, eventType: "INSTALLED_TO_VEHICLE", fromStatus: BatteryOperationalStatus.RESERVED, toStatus: BatteryOperationalStatus.INSTALLED, safetyState: swap.batteryOut.safetyState, snapshot: { swapTransactionId: swap.id, vehicleId: swap.vehicleId } } });
+      if (swap.batteryInId && swap.batteryIn) {
+        await tx.batteryLifecycleEvent.create({ data: { batteryId: swap.batteryInId, actorId: swap.staffId, eventType: "REMOVED_AND_INSPECTED", fromStatus: BatteryOperationalStatus.INSTALLED, toStatus: swap.batteryIn.operationalStatus, safetyState: swap.batteryIn.safetyState, snapshot: { swapTransactionId: swap.id, inspectionId: swap.inspection?.id } } });
+      }
+      await tx.notification.create({ data: { userId: swap.userId, type: NotificationType.PAYMENT_UPDATE, title: "Đổi pin hoàn tất", message: `Thanh toán trực tiếp ${amount.toLocaleString("vi-VN")} VND qua VNPay thành công.`, entityType: "SwapTransaction", entityId: swap.id } });
+      await tx.swapStepHistory.create({ data: { swapTransactionId: swap.id, actorId: swap.staffId, fromStatus: SwapStatus.PAYMENT_PENDING, toStatus: SwapStatus.COMPLETED, data: { paymentMethod: "VNPAY", amount } } });
+      await tx.swapTransaction.update({ where: { id: swap.id }, data: { workflowStatus: SwapStatus.COMPLETED, completedAt: new Date(), status: "SUCCESS" } });
+      return { completed: true, bookingId: swap.booking.id };
+    });
+  },
+
+  findBookingIdByPayment: async (txnRef: string) => {
+    const transaction = await prisma.paymentTransaction.findFirst({
+      where: { vnpTxnRef: txnRef },
+      select: { swapTransaction: { select: { bookingId: true } } },
+    });
+    return transaction?.swapTransaction?.bookingId ?? null;
+  },
+
 };

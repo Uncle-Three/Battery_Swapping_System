@@ -1,221 +1,30 @@
-import { useState, type FC } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { useParams } from 'react-router-dom';
 import { Button } from '../../../../components/ui/Button';
-import { Badge } from '../../../../components/ui/Badge';
-import { ArrowLeftRight, CheckCircle2, ChevronRight, Unlock, Cpu, Sparkles, Receipt } from 'lucide-react';
+import { Input } from '../../../../components/ui/Input';
+import { swapService, type InspectionInput, type StaffSwap } from '../../../../services/swapService';
+import { getApiErrorMessage } from '../../../../services/apiClient';
+import { LoadingSpinner } from '../../../../components/feedback/LoadingSpinner';
+import { statusLabel } from '../../../../utils/viLabels';
 
-export const ProcessSwap: FC = () => {
-  const [step, setStep] = useState(1);
-  const [loading, setLoading] = useState(false);
-
-  // Cabinet Slots states
-  const [slots, setSlots] = useState([
-    { number: 1, status: 'READY', soc: 100, doorLocked: true, description: 'Pin đầy sẵn sàng' },
-    { number: 2, status: 'CHARGING', soc: 68, doorLocked: true, description: 'Đang sạc nhanh' },
-    { number: 3, status: 'EMPTY', soc: 0, doorLocked: true, description: 'Slot trống chờ pin' },
-  ]);
-
-  const handleOpenEmptySlot = () => {
-    setLoading(true);
-    setTimeout(() => {
-      // Unlock Slot 3
-      setSlots(slots.map(s => s.number === 3 ? { ...s, doorLocked: false } : s));
-      setStep(2);
-      setLoading(false);
-    }, 1000);
-  };
-
-  const handleInsertOldBattery = () => {
-    setLoading(true);
-    setTimeout(() => {
-      // Slot 3 gets old battery (12% SoC) and doors lock
-      setSlots(slots.map(s => {
-        if (s.number === 3) {
-          return { ...s, status: 'CHARGING', soc: 12, doorLocked: true, description: 'Pin yếu đang sạc' };
-        }
-        return s;
-      }));
-      setStep(3);
-      setLoading(false);
-    }, 1200);
-  };
-
-  const handleDispenseNewBattery = () => {
-    setLoading(true);
-    setTimeout(() => {
-      // Slot 1 releases battery (becomes EMPTY)
-      setSlots(slots.map(s => {
-        if (s.number === 1) {
-          return { ...s, status: 'EMPTY', soc: 0, doorLocked: false, description: 'Trống (đã nhả)' };
-        }
-        return s;
-      }));
-      setStep(4);
-      setLoading(false);
-    }, 1000);
-  };
-
-  const handleReset = () => {
-    setSlots([
-      { number: 1, status: 'READY', soc: 100, doorLocked: true, description: 'Pin đầy sẵn sàng' },
-      { number: 2, status: 'CHARGING', soc: 68, doorLocked: true, description: 'Đang sạc nhanh' },
-      { number: 3, status: 'EMPTY', soc: 0, doorLocked: true, description: 'Slot trống chờ pin' },
-    ]);
-    setStep(1);
-  };
-
-  return (
-    <div className="flex flex-col gap-6 text-left max-w-5xl">
-      <div>
-        <h2 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-          <ArrowLeftRight className="h-6 w-6 text-green-600" />
-          <span>Thao tác kỹ thuật Đổi Pin</span>
-        </h2>
-        <p className="text-sm text-slate-550 dark:text-slate-400 mt-1">
-          Quy trình hướng dẫn kỹ thuật viên / nhân viên trạm thực hiện tháo lắp và đồng bộ dữ liệu pin.
-        </p>
-      </div>
-
-      <div className="grid lg:grid-cols-3 gap-6">
-        {/* Visual Cabin Grid */}
-        <div className="lg:col-span-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-850 rounded-2xl p-6 shadow-sm flex flex-col gap-4">
-          <h3 className="font-bold text-xs uppercase text-slate-450 tracking-wider flex items-center gap-1.5">
-            <Cpu className="h-4 w-4 text-slate-400" />
-            <span>Mô phỏng Cabin đổi sạc</span>
-          </h3>
-
-          <div className="flex flex-col gap-4 mt-2">
-            {slots.map((slot) => (
-              <div
-                key={slot.number}
-                className={`p-4 rounded-xl border flex items-center justify-between transition-all ${
-                  slot.status === 'READY'
-                    ? 'border-green-300 bg-green-50/20 dark:border-green-900/40 dark:bg-green-950/10 shadow-sm shadow-green-100/10'
-                    : slot.status === 'CHARGING'
-                    ? 'border-yellow-300 bg-yellow-50/20 dark:border-yellow-900/40 dark:bg-yellow-950/10'
-                    : 'border-slate-200 dark:border-slate-800'
-                }`}
-              >
-                <div className="flex flex-col gap-0.5 text-xs">
-                  <span className="font-bold text-sm text-slate-800 dark:text-slate-100">Slot {slot.number}</span>
-                  <span className="text-slate-500">{slot.description}</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  {slot.soc > 0 && (
-                    <span className={`text-xs font-black ${slot.soc > 80 ? 'text-green-600' : 'text-yellow-605'}`}>
-                      {slot.soc}% SoC
-                    </span>
-                  )}
-                  <Badge variant={slot.doorLocked ? 'gray' : 'warning'}>
-                    {slot.doorLocked ? 'Cửa khóa' : 'Cửa mở'}
-                  </Badge>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Dynamic swap process cards */}
-        <div className="lg:col-span-2 bg-white dark:bg-slate-900 border border-slate-205 dark:border-slate-800 rounded-2xl p-6 shadow-sm flex flex-col gap-6">
-          {/* Timeline steps header */}
-          <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-850 pb-4">
-            <div className="flex items-center gap-4 text-xs font-bold uppercase tracking-wider">
-              <span className={step >= 1 ? 'text-green-600 dark:text-green-400' : 'text-slate-400'}>1. Mở Cửa Nhận Pin</span>
-              <ChevronRight className="h-3 w-3 text-slate-300" />
-              <span className={step >= 2 ? 'text-green-600 dark:text-green-400' : 'text-slate-400'}>2. Nhập Cảm Biến</span>
-              <ChevronRight className="h-3 w-3 text-slate-300" />
-              <span className={step >= 3 ? 'text-green-600 dark:text-green-400' : 'text-slate-400'}>3. Nhả Pin Sẵn Sàng</span>
-              <ChevronRight className="h-3 w-3 text-slate-300" />
-              <span className={step >= 4 ? 'text-green-600 dark:text-green-400' : 'text-slate-400'}>4. Hoàn Tất</span>
-            </div>
-          </div>
-
-          {/* Action bodies */}
-          {step === 1 && (
-            <div className="flex flex-col items-center text-center gap-4 py-6 max-w-md mx-auto animate-fadeIn">
-              <Unlock className="h-12 w-12 text-yellow-600 animate-pulse" />
-              <div>
-                <h3 className="font-bold text-lg text-slate-900 dark:text-white">Bước 1: Mở khóa slot trống tiếp nhận</h3>
-                <p className="text-sm text-slate-500 mt-1">
-                  Bấm kích hoạt để mở khóa cabin trống (Slot 3) giúp tiếp nhận cục pin cạn của khách hàng.
-                </p>
-              </div>
-              <Button onClick={handleOpenEmptySlot} loading={loading} className="w-full mt-2">
-                Mở khóa Slot 3 trống
-              </Button>
-            </div>
-          )}
-
-          {step === 2 && (
-            <div className="flex flex-col items-center text-center gap-4 py-6 max-w-md mx-auto animate-fadeIn">
-              <Cpu className="h-12 w-12 text-blue-600 animate-pulse" />
-              <div>
-                <h3 className="font-bold text-lg text-slate-900 dark:text-white">Bước 2: Cắm pin yếu của khách</h3>
-                <p className="text-sm text-slate-500 mt-1">
-                  Đang chờ kỹ thuật viên cắm cục pin yếu của khách hàng (12% SoC) vào Slot 3 trống vừa mở cửa.
-                </p>
-              </div>
-              <Button onClick={handleInsertOldBattery} loading={loading} variant="primary" className="w-full mt-2">
-                Mô phỏng cảm biến: Đã cắm pin vào Slot 3
-              </Button>
-            </div>
-          )}
-
-          {step === 3 && (
-            <div className="flex flex-col items-center text-center gap-4 py-6 max-w-md mx-auto animate-fadeIn">
-              <Sparkles className="h-12 w-12 text-green-600" />
-              <div>
-                <h3 className="font-bold text-lg text-slate-900 dark:text-white">Bước 3: Nhả pin sạc đầy</h3>
-                <p className="text-sm text-slate-500 mt-1">
-                  Hệ thống ghi nhận Slot 3 đã khóa chốt sạc. Bây giờ chuẩn bị nhả khóa pin đầy tại Slot 1 (100% SoC) để khách hàng lấy đi.
-                </p>
-              </div>
-              <Button onClick={handleDispenseNewBattery} loading={loading} className="w-full mt-2">
-                Kích hoạt nhả pin đầy (Slot 1)
-              </Button>
-            </div>
-          )}
-
-          {step === 4 && (
-            <div className="flex flex-col items-center text-center gap-4 py-4 max-w-md mx-auto animate-fadeIn">
-              <CheckCircle2 className="h-14 w-14 text-green-600" />
-              <div>
-                <h3 className="font-bold text-xl text-slate-900 dark:text-white">Đổi pin thành công!</h3>
-                <p className="text-sm text-slate-550 dark:text-slate-400 mt-1">
-                  Giao dịch đổi pin hoàn tất. Các chỉ số pin và hóa đơn đã được cập nhật thành công lên server.
-                </p>
-              </div>
-
-              <div className="p-4 bg-slate-50 dark:bg-slate-800/40 rounded-xl text-xs w-full text-left flex flex-col gap-2.5 my-3">
-                <h4 className="font-bold text-xs uppercase text-slate-450 tracking-wider flex items-center gap-1.5">
-                  <Receipt className="h-4 w-4" />
-                  <span>Biên nhận giao dịch</span>
-                </h4>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Mã giao dịch:</span>
-                  <span className="font-mono font-bold">TX-SWAP-9812</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Thu hồi pin cũ:</span>
-                  <span>Slot 3 (SoC 12%)</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Cung cấp pin mới:</span>
-                  <span className="text-green-600 font-bold">Slot 1 (SoC 100%)</span>
-                </div>
-                <div className="flex justify-between font-bold text-sm text-green-650 dark:text-green-400 border-t border-slate-205 dark:border-slate-800 pt-2">
-                  <span>Khấu trừ số dư ví:</span>
-                  <span>45,000 VND</span>
-                </div>
-              </div>
-
-              <Button onClick={handleReset} variant="outline" className="w-full mt-2">
-                Thực hiện swap tiếp theo
-              </Button>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
+const steps = ['NOT_STARTED', 'VERIFIED', 'OLD_BATTERY_REMOVED', 'OLD_BATTERY_INSPECTED', 'REPLACEMENT_ASSIGNED', 'INSTALLED', 'PAYMENT_PENDING', 'COMPLETED'];
+export const ProcessSwap = () => {
+  const { swapId = '' } = useParams(); const [swap, setSwap] = useState<StaffSwap | null>(null); const [serial, setSerial] = useState(''); const [soc, setSoc] = useState('');
+  const [inspection, setInspection] = useState({ soh: '', temperature: '', voltage: '', physicalCondition: '', outcome: 'MAINTENANCE' as InspectionInput['outcome'], notes: '' }); const [rollbackReason, setRollbackReason] = useState(''); const [error, setError] = useState(''); const [loading, setLoading] = useState(false);
+  const load = useCallback(() => swapService.get(swapId).then(setSwap).catch((cause) => setError(getApiErrorMessage(cause))), [swapId]); useEffect(() => { void load(); }, [load]);
+  const run = async (action: () => Promise<unknown>) => { setLoading(true); setError(''); try { await action(); await load(); } catch (cause) { setError(getApiErrorMessage(cause)); } finally { setLoading(false); } };
+  if (!swap && !error) return <LoadingSpinner label="Đang tải quy trình thay pin..." />; if (!swap) return <p role="alert" className="bg-red-50 p-4 text-red-700">{error}</p>;
+  const status = swap.workflowStatus; const oldSerial = swap.booking?.vehicle ? swap.batteryIn?.serialNumber : undefined; const reservedSerial = swap.booking?.battery?.serialNumber ?? swap.batteryOut?.serialNumber;
+  return <div className="space-y-6"><div><h1 className="text-3xl font-black">Quy trình thay pin</h1><p className="text-slate-500">Mã giao dịch {swap.id}; các thao tác được quyết định bởi trạng thái hệ thống.</p></div>{error && <p role="alert" className="rounded-xl bg-red-50 p-4 text-red-700">{error}</p>}<ol className="grid gap-2 md:grid-cols-4">{steps.map((step, index) => <li key={step} className={`rounded-lg border p-3 text-xs font-bold ${index <= steps.indexOf(status) ? 'border-green-500 bg-green-50' : 'text-slate-400'}`}>{statusLabel(step)}</li>)}</ol><section className="rounded-2xl border bg-white p-6"><h2 className="font-black">Thông tin xác minh</h2><p>{swap.booking?.user.fullName} · {swap.booking?.vehicle?.name} · {swap.booking?.vehicle?.plateNumber}</p><p>Loại pin: <strong>{swap.booking?.vehicle?.batteryType || swap.vehicle?.batteryType || 'Không rõ'}</strong></p><p>Pin đặt trước: <strong>{reservedSerial ?? '-'}</strong></p>{swap.booking?.reason && <p>Ghi chú / Yêu cầu: <strong className="text-blue-700">{swap.booking.reason}</strong></p>}<p>Hành động tiếp theo: {swap.nextActions?.map(statusLabel).join(', ') || 'Không có'}</p></section>
+    {status === 'NOT_STARTED' && <Button loading={loading} onClick={() => void run(() => swapService.verify(swap.id))}>Xác minh khách hàng, xe và pin</Button>}
+    {status === 'VERIFIED' && <section className="rounded-2xl border bg-white p-5"><Input label="Mã pin đang lắp" value={serial} onChange={(e) => setSerial(e.target.value)} /><Input label="Mức pin cũ (SOC)" type="number" value={soc} onChange={(e) => setSoc(e.target.value)} /><Button className="mt-3" disabled={!serial || soc === ''} loading={loading} onClick={() => void run(() => swapService.remove(swap.id, serial, Number(soc)))}>Xác nhận tháo pin cũ</Button></section>}
+    {status === 'OLD_BATTERY_REMOVED' && <section className="grid gap-3 rounded-2xl border bg-white p-5 sm:grid-cols-2"><Input label="Mã pin đã tháo" value={serial || oldSerial || ''} onChange={(e) => setSerial(e.target.value)} /><Input label="Mức pin (SOC)" type="number" value={soc} onChange={(e) => setSoc(e.target.value)} /><Input label="Sức khỏe pin (SOH)" type="number" value={inspection.soh} onChange={(e) => setInspection({ ...inspection, soh: e.target.value })} /><Input label="Nhiệt độ" type="number" value={inspection.temperature} onChange={(e) => setInspection({ ...inspection, temperature: e.target.value })} /><Input label="Điện áp" type="number" value={inspection.voltage} onChange={(e) => setInspection({ ...inspection, voltage: e.target.value })} /><Input label="Tình trạng vật lý" value={inspection.physicalCondition} onChange={(e) => setInspection({ ...inspection, physicalCondition: e.target.value })} /><label className="text-sm font-semibold">Kết luận<select aria-label="Kết luận kiểm tra" className="mt-1 w-full rounded-lg border p-3" value={inspection.outcome} onChange={(e) => setInspection({ ...inspection, outcome: e.target.value as InspectionInput['outcome'] })}>{['AVAILABLE','MAINTENANCE','QUARANTINED','RETIRED'].map((value) => <option key={value} value={value}>{statusLabel(value)}</option>)}</select></label><Input label="Ghi chú" value={inspection.notes} onChange={(e) => setInspection({ ...inspection, notes: e.target.value })} /><Button disabled={!serial || soc === '' || !inspection.soh || !inspection.physicalCondition} loading={loading} onClick={() => void run(() => swapService.inspect(swap.id, { serialNumber: serial, soc: Number(soc), soh: Number(inspection.soh), temperature: inspection.temperature ? Number(inspection.temperature) : undefined, voltage: inspection.voltage ? Number(inspection.voltage) : undefined, physicalCondition: inspection.physicalCondition, outcome: inspection.outcome, notes: inspection.notes || undefined }))}>Lưu biên bản kiểm tra</Button></section>}
+    {status === 'OLD_BATTERY_INSPECTED' && <section className="rounded-2xl border bg-white p-5"><p>Pin an toàn đã giữ: <strong>{reservedSerial}</strong></p><Input label="Quét mã pin thay thế" value={serial} onChange={(e) => setSerial(e.target.value)} /><Button className="mt-3" disabled={!serial} loading={loading} onClick={() => void run(() => swapService.assign(swap.id, serial))}>Gán đúng pin đã giữ</Button></section>}
+    {status === 'REPLACEMENT_ASSIGNED' && <section className="rounded-2xl border bg-white p-5"><Input label="Quét lại mã pin đã lắp" value={serial} onChange={(e) => setSerial(e.target.value)} /><Button className="mt-3" disabled={!serial} loading={loading} onClick={() => void run(() => swapService.install(swap.id, serial))}>Xác nhận lắp pin</Button></section>}
+    {status === 'INSTALLED' && <section className="rounded-2xl border bg-white p-5 dark:bg-slate-900"><h2 className="font-black">Yêu cầu thanh toán trực tiếp</h2><p className="mt-2 text-sm text-slate-500">Tạo hóa đơn theo giá lịch thay pin và gửi thông báo cho khách hàng. Khách hàng thanh toán trực tiếp qua VNPay, không sử dụng ví.</p><Button className="mt-4" loading={loading} onClick={() => void run(() => swapService.requestDirectPayment(swap.id))}>Gửi yêu cầu thanh toán VNPay</Button></section>}
+    {status === 'PAYMENT_PENDING' && <p className="rounded-xl bg-amber-50 p-5 font-bold text-amber-800 dark:bg-amber-950/30 dark:text-amber-300">Đang chờ khách hàng thanh toán trực tiếp qua VNPay. Hệ thống tự hoàn tất sau khi kết quả thanh toán được xác minh.</p>}
+    {status === 'COMPLETED' && <p className="rounded-xl bg-green-50 p-5 font-bold text-green-700">Thay pin và thanh toán đã hoàn tất.</p>}
+    {!['COMPLETED','ROLLED_BACK'].includes(status) && <section className="rounded-2xl border border-red-200 p-5"><Input label="Lý do hoàn tác" value={rollbackReason} onChange={(e) => setRollbackReason(e.target.value)} /><Button className="mt-3" variant="danger" disabled={rollbackReason.trim().length < 3} loading={loading} onClick={() => void run(() => swapService.rollback(swap.id, rollbackReason))}>Hoàn tác giao dịch</Button></section>}
+  </div>;
 };
 export default ProcessSwap;

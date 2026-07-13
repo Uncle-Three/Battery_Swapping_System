@@ -3,19 +3,19 @@ import { prisma } from "../../config/database";
 
 export const authRepository = {
   findUserByEmail: (email: string) =>
-    prisma.user.findUnique({
+    prisma.user.findFirst({
       where: { email },
       include: { role: true, wallet: true },
     }),
 
   findUserByIdForAuth: (id: string) =>
-    prisma.user.findUnique({
+    prisma.user.findFirst({
       where: { id },
       include: { role: true },
     }),
 
   findUserByPhone: (phone: string) =>
-    prisma.user.findUnique({
+    prisma.user.findFirst({
       where: { phone },
       include: { role: true, wallet: true },
     }),
@@ -63,7 +63,7 @@ export const authRepository = {
     ipAddress?: string;
   }) =>
     prisma.refreshSession.create({
-      data: input,
+      data: { ...input, revokedAt: null },
     }),
 
   findRefreshSessionByTokenHash: (tokenHash: string) =>
@@ -88,7 +88,10 @@ export const authRepository = {
       const revoked = await tx.refreshSession.updateMany({
         where: {
           id: input.currentSessionId,
-          revokedAt: null,
+          OR: [
+            { revokedAt: null },
+            { revokedAt: { isSet: false } },
+          ],
         },
         data: {
           revokedAt: new Date(),
@@ -104,6 +107,7 @@ export const authRepository = {
           userId: input.userId,
           tokenHash: input.tokenHash,
           expiresAt: input.expiresAt,
+          revokedAt: null,
           userAgent: input.userAgent,
           ipAddress: input.ipAddress,
         },
@@ -114,7 +118,10 @@ export const authRepository = {
     prisma.refreshSession.updateMany({
       where: {
         tokenHash,
-        revokedAt: null,
+        OR: [
+          { revokedAt: null },
+          { revokedAt: { isSet: false } },
+        ],
       },
       data: {
         revokedAt: new Date(),

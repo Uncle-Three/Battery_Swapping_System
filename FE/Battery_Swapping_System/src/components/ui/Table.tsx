@@ -14,7 +14,7 @@ export const Table: React.FC<TableProps> = ({ headers, children }) => {
             {headers.map((header, index) => (
               <th
                 key={index}
-                className="px-6 py-3 font-semibold text-gray-700 dark:text-gray-200 uppercase tracking-wider"
+                className={`px-6 py-3 font-semibold text-gray-700 dark:text-gray-200 uppercase tracking-wider ${header === 'Hành động' || header === 'Thao tác' ? 'text-right' : ''}`}
               >
                 {header}
               </th>

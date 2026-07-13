@@ -3,11 +3,13 @@ import { API_ENDPOINTS } from '../constants/endpoints';
 import type { LoginCredentials, Profile, RegisterInput, UpdateProfileInput, User } from '../types';
 import { mapProfileDto, mapUserDto } from './responseMappers';
 
-type AuthResponse = {
+export type AuthResponse = {
   accessToken: string;
   tokenType: 'Bearer';
   user: User;
 };
+
+let restoreSessionPromise: Promise<AuthResponse> | null = null;
 
 const sanitizeRegisterInput = (data: RegisterInput): RegisterInput => ({
   email: data.email,
@@ -28,6 +30,22 @@ export const authService = {
     const response = await apiClient.post(API_ENDPOINTS.AUTH.LOGIN, credentials);
     const data = unwrapData<AuthResponse>(response);
     return { ...data, user: mapUserDto(data.user) };
+  },
+
+  restoreSession: async (): Promise<AuthResponse> => {
+    if (!restoreSessionPromise) {
+      restoreSessionPromise = apiClient
+        .post(API_ENDPOINTS.AUTH.REFRESH, undefined, { headers: { Authorization: undefined } })
+        .then((response) => {
+          const data = unwrapData<AuthResponse>(response);
+          return { ...data, user: mapUserDto(data.user) };
+        })
+        .finally(() => {
+          restoreSessionPromise = null;
+        });
+    }
+
+    return restoreSessionPromise;
   },
 
   register: async (data: RegisterInput): Promise<{ user: User }> => {

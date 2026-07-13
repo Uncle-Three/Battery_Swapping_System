@@ -1,21 +1,21 @@
 import { Router } from "express";
 import { paymentController } from "./payment.controller";
 import { authenticate } from "../../common/middleware/authenticate.middleware";
+import { validate } from "../../common/middleware/validate.middleware";
+import { vnpayCallbackSchema } from "./payment.validation";
+import { objectIdParamsSchema } from "../../common/validation/object-id";
 
 export const paymentRouter = Router();
 
+// VNPay calls these server-to-server/browser redirect endpoints without a bearer token.
+paymentRouter.get("/vnpay/ipn", validate({ query: vnpayCallbackSchema }), paymentController.vnpayIPN);
+paymentRouter.get("/vnpay/return", validate({ query: vnpayCallbackSchema }), paymentController.vnpayReturn);
+
 // ── Routes yêu cầu đăng nhập ─────────────────────────────────────────────────
 paymentRouter.use(authenticate);
-paymentRouter.get("/wallet", paymentController.getWallet);
-paymentRouter.post("/wallet/topups", paymentController.createTopup);
-paymentRouter.post("/subscriptions/purchase", paymentController.purchaseSubscription);
 
 // VNPay: tạo payment URL (cần auth để lấy userId)
-paymentRouter.post("/vnpay/create-payment", paymentController.initiateVNPayTopup);
 
-// ── Routes PUBLIC (không cần đăng nhập) ─────────────────────────────────────
-// IPN: VNPay gọi server-to-server, không có Bearer token
-paymentRouter.get("/vnpay/ipn", paymentController.vnpayIPN);
-
-// Return: user redirect về từ VNPay, FE đọc kết quả
-paymentRouter.get("/vnpay/return", paymentController.vnpayReturn);
+// Booking-specific payment (amount từ invoice — không nhận từ FE)
+paymentRouter.get("/bookings/:id", validate({ params: objectIdParamsSchema }), paymentController.getBookingPaymentStatus);
+paymentRouter.post("/bookings/:id/vnpay", validate({ params: objectIdParamsSchema }), paymentController.initiateVNPayBookingPayment);

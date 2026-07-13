@@ -4,6 +4,7 @@ import { Input } from '../../../../components/ui/Input';
 import { Dropdown } from '../../../../components/ui/Dropdown';
 import { Button } from '../../../../components/ui/Button';
 import { ClipboardList, CheckCircle2, Info } from 'lucide-react';
+import { maintenanceService } from '../../../../services/maintenanceService';
 
 export const MaintenanceForm: FC = () => {
   const location = useLocation();
@@ -27,19 +28,36 @@ export const MaintenanceForm: FC = () => {
     }
   }, [stateData]);
 
-  const handleSubmit = (e: FormEvent) => {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!batteryId) return;
 
-    console.log('Maintenance record logged:', { batteryId, soh, soc, status, notes });
-    setSubmitted(true);
+    setLoading(true);
+    setError('');
+    try {
+      await maintenanceService.create({
+        batteryId,
+        soh: Number(soh),
+        soc: Number(soc),
+        status: status as any,
+        notes: notes || undefined,
+      });
+      setSubmitted(true);
+    } catch (err: any) {
+      setError(err.message || 'Lỗi khi lưu phiếu bảo trì');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const statusOptions = [
-    { value: 'READY', label: 'Ready - Khả dụng đổi' },
-    { value: 'CHARGING', label: 'Charging - Đang sạc' },
-    { value: 'MAINTENANCE', label: 'Maintenance - Đang sửa' },
-    { value: 'FAULTY', label: 'Faulty - Hỏng hóc nặng' },
+    { value: 'READY', label: 'Sẵn sàng thay thế' },
+    { value: 'CHARGING', label: 'Đang sạc' },
+    { value: 'MAINTENANCE', label: 'Đang bảo trì' },
+    { value: 'FAULTY', label: 'Hư hỏng nặng' },
   ];
 
   return (
@@ -143,7 +161,9 @@ export const MaintenanceForm: FC = () => {
             />
           </div>
 
-          <Button type="submit" variant="primary" className="w-full mt-2">
+          {error && <p className="text-sm font-semibold text-red-600">{error}</p>}
+
+          <Button type="submit" variant="primary" className="w-full mt-2" loading={loading}>
             Lưu phiếu bảo trì
           </Button>
         </form>

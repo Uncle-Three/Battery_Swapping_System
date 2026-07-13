@@ -12,7 +12,7 @@ export const hashRefreshToken = (token: string): string => {
 };
 
 export const createRefreshToken = (userId: string): RefreshTokenResult => {
-  const token = signRefreshToken({ sub: userId, type: "refresh" });
+  const token = signRefreshToken({ sub: userId, type: "refresh", jti: crypto.randomUUID() });
   const payload = verifyRefreshToken(token);
 
   if (!payload.exp) {

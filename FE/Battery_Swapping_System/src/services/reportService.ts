@@ -1,44 +1,16 @@
+import { API_ENDPOINTS } from '../constants/endpoints';
+import apiClient, { unwrapData } from './apiClient';
 
+export type AnalyticsReport = {
+  period: string; totalSwaps: number; activeUsers: number; revenue: number; averageReplacementMinutes: number;
+  approvalRate: number; failureRate: number; mandatoryOpen: number;
+  batterySafety: Record<string, number>; bookingStatuses: Record<string, number>; inspectionOutcomes: Record<string, number>;
+  stationStats: Array<{ id: string; name: string; status: string; swaps: number; revenue: number; slotCount: number }>;
+};
+export type InventoryBattery = { id: string; serialNumber: string; soc: number; soh: number; temperature: number; voltage: number; safetyState: string; operationalStatus: string; batteryType?: { code: string } | null; station?: { name: string } | null };
+export type InventoryReport = { totalBatteries: number; byOperationalStatus: Record<string, number>; bySafetyState: Record<string, number>; batteries: InventoryBattery[] };
 
 export const reportService = {
-  getAnalytics: async (): Promise<any> => {
-    // const response = await apiClient.get(API_ENDPOINTS.REPORTS.ANALYTICS);
-    // return response.data;
-
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        resolve({
-          totalSwaps: 1240,
-          activeUsers: 342,
-          revenue: 55800000,
-          stationEfficiency: 94.2,
-          monthlySwaps: [
-            { month: 'Jan', swaps: 150 },
-            { month: 'Feb', swaps: 220 },
-            { month: 'Mar', swaps: 280 },
-            { month: 'Apr', swaps: 310 },
-            { month: 'May', swaps: 380 },
-            { month: 'Jun', swaps: 420 },
-          ],
-        });
-      }, 500);
-    });
-  },
-
-  getInventory: async (): Promise<any> => {
-    // const response = await apiClient.get(API_ENDPOINTS.REPORTS.INVENTORY);
-    // return response.data;
-
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        resolve({
-          totalBatteries: 120,
-          readyBatteries: 82,
-          chargingBatteries: 28,
-          maintenanceBatteries: 7,
-          faultyBatteries: 3,
-        });
-      }, 500);
-    });
-  },
+  getAnalytics: async (period: 'week' | 'month' | 'year') => unwrapData<AnalyticsReport>(await apiClient.get(API_ENDPOINTS.REPORTS.ANALYTICS, { params: { period } })),
+  getInventory: async () => unwrapData<InventoryReport>(await apiClient.get(API_ENDPOINTS.REPORTS.INVENTORY)),
 };

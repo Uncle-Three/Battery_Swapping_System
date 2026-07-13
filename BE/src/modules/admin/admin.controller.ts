@@ -7,10 +7,12 @@ export const adminController = {
     res.status(200).json({ success: true, data });
   }) satisfies RequestHandler,
 
-  auditLogs: (async (_req, res) => {
-    const data = await adminService.auditLogs();
+  auditLogs: (async (req, res) => {
+    const data = await adminService.auditLogs(req.query);
     res.status(200).json({ success: true, data });
   }) satisfies RequestHandler,
+  settings: (async (_req, res) => res.status(200).json({ success: true, data: await adminService.settings() })) satisfies RequestHandler,
+  updateSetting: (async (req, res) => res.status(200).json({ success: true, data: await adminService.updateSetting(req.user!.id, String(req.params.key), req.body.value) })) satisfies RequestHandler,
 
   listUsers: (async (_req, res) => {
     const data = await adminService.listUsers();

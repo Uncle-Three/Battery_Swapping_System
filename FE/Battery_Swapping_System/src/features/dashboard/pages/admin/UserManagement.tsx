@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState, type FC } from 'react';
-import { Search, UserPlus, Users } from 'lucide-react';
+import { Search, Users } from 'lucide-react';
 import { Badge } from '../../../../components/ui/Badge';
-import { Button } from '../../../../components/ui/Button';
 import { Table } from '../../../../components/ui/Table';
 import { Permissions } from '../../../../constants/permissions';
 import { UserRole } from '../../../../constants/roles';
 import { useAuth } from '../../../../hooks/useAuth';
 import { adminService } from '../../../../services/adminService';
 import type { PermissionMatrix, User, UserStatus } from '../../../../types';
+import { roleLabel, statusLabel } from '../../../../utils/viLabels';
 
 const userStatuses: UserStatus[] = ['ACTIVE', 'INACTIVE', 'BLOCKED'];
 
@@ -36,7 +36,7 @@ export const UserManagement: FC = () => {
         setRoles(roleData);
         setPermissionMatrix(permissions);
       } catch {
-        setError('Khong the tai du lieu nguoi dung.');
+        setError('Không thể tải dữ liệu người dùng.');
       } finally {
         setLoading(false);
       }
@@ -52,7 +52,7 @@ export const UserManagement: FC = () => {
       const updatedUser = await adminService.updateUserRole(userId, newRole);
       setUsers((current) => current.map((user) => (user.id === userId ? updatedUser : user)));
     } catch {
-      setError('Khong the cap nhat role. Kiem tra last-admin/self-demote rule.');
+      setError('Không thể cập nhật vai trò. Không được hạ quyền quản trị viên cuối cùng hoặc tự hạ quyền.');
     } finally {
       setSavingUserId(null);
     }
@@ -65,7 +65,7 @@ export const UserManagement: FC = () => {
       const updatedUser = await adminService.updateUserStatus(userId, newStatus);
       setUsers((current) => current.map((user) => (user.id === userId ? updatedUser : user)));
     } catch {
-      setError('Khong the cap nhat status. Kiem tra self-block/last-admin rule.');
+      setError('Không thể cập nhật trạng thái. Không được tự khóa tài khoản hoặc khóa quản trị viên cuối cùng.');
     } finally {
       setSavingUserId(null);
     }
@@ -105,17 +105,13 @@ export const UserManagement: FC = () => {
           </div>
           <div>
             <h2 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white">
-              Quan ly nguoi dung he thong
+              Quản lý người dùng hệ thống
             </h2>
             <p className="text-sm text-slate-550 dark:text-slate-400 mt-0.5">
-              Role/status duoc cap nhat truc tiep qua Backend Phase 1.
+              Vai trò và trạng thái được cập nhật trực tiếp trên hệ thống.
             </p>
           </div>
         </div>
-        <Button variant="primary" className="flex items-center gap-2" disabled>
-          <UserPlus className="h-4 w-4" />
-          <span>Them User</span>
-        </Button>
       </div>
 
       <div className="bg-white dark:bg-slate-900 border border-slate-205 dark:border-slate-850 rounded-2xl p-4 shadow-sm flex flex-col gap-3">
@@ -126,38 +122,38 @@ export const UserManagement: FC = () => {
           <input
             type="text"
             className="w-full pl-9 pr-4 py-2 border border-slate-250 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-            placeholder="Tim theo ho ten hoac email..."
+            placeholder="Tìm theo họ tên hoặc email..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
         {permissionMatrix && (
           <p className="text-xs text-slate-500">
-            Permission matrix loaded: ADMIN={permissionMatrix.ADMIN?.join(', ') ?? '*'}
+            Đã tải ma trận quyền cho {Object.keys(permissionMatrix).length} vai trò.
           </p>
         )}
         {error && <p className="text-sm font-semibold text-red-600">{error}</p>}
       </div>
 
       {loading ? (
-        <div className="text-sm text-slate-500">Dang tai users...</div>
+        <div className="text-sm text-slate-500">Đang tải người dùng...</div>
       ) : (
-        <Table headers={['ID', 'Ho ten', 'Email', 'Role', 'Status', 'Balance', 'Ngay tao', 'Cap nhat']}>
+        <Table headers={['Mã', 'Họ tên', 'Email', 'Vai trò', 'Trạng thái', 'Số dư', 'Ngày tạo', 'Cập nhật']}>
           {filteredUsers.map((user) => (
             <tr key={user.id} className="hover:bg-slate-55 dark:hover:bg-slate-800/40 transition-colors">
               <td className="px-6 py-4 font-mono text-xs">{user.id}</td>
               <td className="px-6 py-4 font-bold text-slate-850 dark:text-slate-100">{user.name}</td>
               <td className="px-6 py-4 text-slate-600 dark:text-slate-400">{user.email}</td>
               <td className="px-6 py-4">
-                <Badge variant={getRoleBadgeVariant(user.role)}>{user.role}</Badge>
+                <Badge variant={getRoleBadgeVariant(user.role)}>{roleLabel(user.role)}</Badge>
               </td>
               <td className="px-6 py-4">
                 <Badge variant={user.status === 'ACTIVE' ? 'success' : user.status === 'BLOCKED' ? 'error' : 'gray'}>
-                  {user.status ?? 'ACTIVE'}
+                  {statusLabel(user.status)}
                 </Badge>
               </td>
-              <td className="px-6 py-4 text-slate-500">{user.balance ?? '0'}</td>
-              <td className="px-6 py-4 text-slate-500">{user.createdAt}</td>
+              <td className="px-6 py-4 text-slate-500">{user.balance ?? '—'}</td>
+              <td className="px-6 py-4 text-slate-500">{new Date(user.createdAt).toLocaleString('vi-VN')}</td>
               <td className="px-6 py-4">
                 <div className="flex flex-col gap-2">
                   <select
@@ -168,19 +164,19 @@ export const UserManagement: FC = () => {
                   >
                     {roles.map((role) => (
                       <option key={role} value={role}>
-                        {role}
+                        {roleLabel(role)}
                       </option>
                     ))}
                   </select>
                   <select
                     className="bg-white dark:bg-slate-800 border border-slate-350 dark:border-slate-700 rounded-lg text-xs font-semibold px-2 py-1 text-slate-800 dark:text-slate-200"
-                    value={user.status ?? 'ACTIVE'}
+                    value={user.status}
                     disabled={!canUpdateStatus || savingUserId === user.id}
                     onChange={(e) => handleStatusChange(user.id, e.target.value as UserStatus)}
                   >
                     {userStatuses.map((status) => (
                       <option key={status} value={status}>
-                        {status}
+                        {statusLabel(status)}
                       </option>
                     ))}
                   </select>

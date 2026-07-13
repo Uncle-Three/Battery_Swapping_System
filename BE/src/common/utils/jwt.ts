@@ -12,6 +12,7 @@ export type AccessTokenPayload = {
 export type RefreshTokenPayload = {
   sub: string;
   type: "refresh";
+  jti?: string;
   iat?: number;
   exp?: number;
 };

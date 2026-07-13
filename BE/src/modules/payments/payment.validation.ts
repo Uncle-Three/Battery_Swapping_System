@@ -1,28 +1,32 @@
 import { z } from "zod";
 
 export const createTopupSchema = z.object({
-  amount: z.coerce.number().min(10000),
+  amount: z.coerce.number().int().positive().min(10000),
   paymentMethod: z.string().min(1),
 });
 
 export const purchaseSubscriptionSchema = z.object({
-  packageId: z.string().min(1),
+  packageId: z.string().regex(/^[a-f\d]{24}$/i, "Invalid MongoDB ObjectId"),
 });
 
 // VNPay top-up request
 export const createVNPayTopupSchema = z.object({
   amount: z.coerce
     .number()
+    .int()
+    .positive()
     .min(10000, "Số tiền tối thiểu là 10,000 VNĐ")
     .max(500_000_000, "Số tiền tối đa là 500,000,000 VNĐ"),
   orderInfo: z.string().optional(),
 });
 
-// VNPay return/IPN query params (tất cả là string từ query)
+// VNPay return/IPN query params
+// vnp_TransactionStatus là optional vì VNPay không luôn gửi field này
+// (ví dụ: user hủy trước khi hoàn tất thanh toán)
 export const vnpayCallbackSchema = z.object({
-  vnp_TxnRef: z.string(),
-  vnp_ResponseCode: z.string(),
-  vnp_TransactionStatus: z.string(),
-  vnp_Amount: z.string(),
-  vnp_SecureHash: z.string(),
+  vnp_TxnRef: z.string().optional(),
+  vnp_ResponseCode: z.string().optional(),
+  vnp_TransactionStatus: z.string().optional(),
+  vnp_Amount: z.string().optional(),
+  vnp_SecureHash: z.string().optional(),
 }).passthrough();

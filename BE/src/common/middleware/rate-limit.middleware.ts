@@ -1,9 +1,14 @@
 import rateLimit from "express-rate-limit";
+import { env } from "../../config/env";
 
 const authRateLimitMessage = {
   success: false,
+  code: "RATE_LIMITED",
   message: "Too many requests. Please try again later.",
+  errors: [],
 };
+
+const skipInAutomatedTests = () => env.NODE_ENV === "test" || process.env.E2E_TEST === "true";
 
 export const loginRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -11,6 +16,7 @@ export const loginRateLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: authRateLimitMessage,
+  skip: skipInAutomatedTests,
 });
 
 export const registerRateLimiter = rateLimit({
@@ -19,6 +25,7 @@ export const registerRateLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: authRateLimitMessage,
+  skip: skipInAutomatedTests,
 });
 
 export const refreshRateLimiter = rateLimit({
@@ -27,4 +34,5 @@ export const refreshRateLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: authRateLimitMessage,
+  skip: skipInAutomatedTests,
 });

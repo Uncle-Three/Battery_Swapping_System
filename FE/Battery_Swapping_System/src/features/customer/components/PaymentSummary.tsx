@@ -19,7 +19,7 @@ export const PaymentSummary: React.FC<PaymentSummaryProps> = ({
       <h3 className="font-bold text-lg text-slate-800 dark:text-slate-100">Chi tiết thanh toán</h3>
       <div className="flex justify-between text-sm py-2 border-b border-slate-100 dark:border-slate-800">
         <span className="text-slate-500">Mô tả</span>
-        <span className="font-medium">Nạp tiền vào tài khoản</span>
+        <span className="font-medium">Thanh toán dịch vụ thay pin</span>
       </div>
       <div className="flex justify-between text-sm py-2 border-b border-slate-100 dark:border-slate-800">
         <span className="text-slate-500">Phương thức</span>

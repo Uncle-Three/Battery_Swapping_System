@@ -1,25 +1,58 @@
-import { useState, type FC } from 'react';
+import { useState, useEffect, type FC } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Table } from '../../../../components/ui/Table';
 import { Badge } from '../../../../components/ui/Badge';
 import { Button } from '../../../../components/ui/Button';
 import { AlertTriangle, Wrench, Search, ShieldAlert } from 'lucide-react';
+import { reportService, type InventoryBattery } from '../../../../services/reportService';
+import { statusLabel } from '../../../../utils/viLabels';
+
+type InspectionBattery = InventoryBattery & {
+  status: string;
+  severity: 'CRITICAL' | 'WARNING';
+  errorLog: string;
+};
 
 export const BatteryInspect: FC = () => {
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
   const [severityFilter, setSeverityFilter] = useState('ALL');
 
-  // Mock abnormal batteries list
-  const [faultyBatteries] = useState([
-    { id: 'b-101', serialNumber: 'BT-SN-9912', soc: 40, soh: 55, temperature: 62, voltage: 38, status: 'FAULTY', severity: 'CRITICAL', errorLog: 'Quá nhiệt khi sạc (>60C)' },
-    { id: 'b-102', serialNumber: 'BT-SN-8711', soc: 95, soh: 60, temperature: 38, voltage: 42, status: 'MAINTENANCE', severity: 'WARNING', errorLog: 'SoH suy giảm nghiêm trọng' },
-    { id: 'b-103', serialNumber: 'BT-SN-3091', soc: 0, soh: 88, temperature: 25, voltage: 12, status: 'FAULTY', severity: 'CRITICAL', errorLog: 'Mất kết nối giao tiếp BMS' },
-    { id: 'b-104', serialNumber: 'BT-SN-4412', soc: 78, soh: 94, temperature: 48, voltage: 47, status: 'MAINTENANCE', severity: 'LOW', errorLog: 'Cảnh báo chênh lệch điện áp' },
-  ]);
+  const [batteries, setBatteries] = useState<InspectionBattery[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  const handleFixRedirect = (battery: typeof faultyBatteries[0]) => {
-    navigate('/dashboard/tech/maintenance', {
+  useEffect(() => {
+    const fetchBatteries = async () => {
+      try {
+        setLoading(true);
+        const data = await reportService.getInventory();
+        const faulty = data.batteries.filter(b => 
+          ['FAULTY', 'MAINTENANCE'].includes(b.operationalStatus) || 
+          ['WARNING', 'UNSAFE'].includes(b.safetyState)
+        );
+        setBatteries(faulty.map(b => ({
+          ...b,
+          id: b.id,
+          serialNumber: b.serialNumber,
+          soc: b.soc,
+          soh: b.soh,
+          temperature: b.temperature,
+          status: b.operationalStatus,
+          severity: b.safetyState === 'UNSAFE' || b.operationalStatus === 'FAULTY' ? 'CRITICAL' : 'WARNING',
+          errorLog: `Mức an toàn: ${statusLabel(b.safetyState)}, trạng thái vận hành: ${statusLabel(b.operationalStatus)}`
+        })));
+      } catch (err: any) {
+        setError(err.message || 'Lỗi khi tải danh sách pin');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchBatteries();
+  }, []);
+
+  const handleFixRedirect = (battery: InspectionBattery) => {
+    navigate('/staff/maintenance', {
       state: {
         batteryId: battery.id,
         soh: battery.soh,
@@ -29,7 +62,7 @@ export const BatteryInspect: FC = () => {
     });
   };
 
-  const filteredBatteries = faultyBatteries.filter((b) => {
+  const filteredBatteries = batteries.filter((b) => {
     const matchesSearch = b.serialNumber.toLowerCase().includes(searchTerm.toLowerCase()) || b.id.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesSeverity = severityFilter === 'ALL' || b.severity === severityFilter;
     return matchesSearch && matchesSeverity;
@@ -60,7 +93,7 @@ export const BatteryInspect: FC = () => {
           <input
             type="text"
             className="w-full pl-9 pr-4 py-2 border border-slate-250 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-            placeholder="Tìm theo Serial hoặc ID pin..."
+            placeholder="Tìm theo mã pin..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
@@ -85,7 +118,7 @@ export const BatteryInspect: FC = () => {
                 : 'border-slate-200 text-slate-500 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-900'
             }`}
           >
-            Nghiêm trọng (Critical)
+            Nghiêm trọng
           </button>
           <button
             onClick={() => setSeverityFilter('WARNING')}
@@ -95,18 +128,26 @@ export const BatteryInspect: FC = () => {
                 : 'border-slate-200 text-slate-500 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-900'
             }`}
           >
-            Cảnh báo (Warning)
+            Cảnh báo
           </button>
         </div>
       </div>
 
-      {filteredBatteries.length === 0 ? (
+      {loading ? (
+        <div className="bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 border-dashed rounded-xl p-12 text-center text-slate-500">
+          Đang tải dữ liệu pin lỗi...
+        </div>
+      ) : error ? (
+        <div className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/30 rounded-xl p-6 text-center text-red-600 dark:text-red-400">
+          {error}
+        </div>
+      ) : filteredBatteries.length === 0 ? (
         <div className="bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 border-dashed rounded-xl p-12 text-center text-slate-500 flex flex-col items-center gap-3">
           <ShieldAlert className="h-10 w-10 text-slate-400" />
           <p className="text-sm">Không tìm thấy pin lỗi nào phù hợp với bộ lọc hiện tại.</p>
         </div>
       ) : (
-        <Table headers={['ID Pin', 'Số Serial', 'SoH (%)', 'Nhiệt độ (C)', 'Điện áp (V)', 'Mô tả lỗi', 'Mức độ', 'Thao tác']}>
+        <Table headers={['Mã pin', 'Số sê-ri', 'Sức khỏe pin (%)', 'Nhiệt độ (°C)', 'Điện áp (V)', 'Mô tả lỗi', 'Mức độ', 'Thao tác']}>
           {filteredBatteries.map((b) => (
             <tr key={b.id} className="hover:bg-slate-55 dark:hover:bg-slate-800/40 transition-colors">
               <td className="px-6 py-4 font-mono text-xs font-bold">{b.id}</td>
@@ -123,7 +164,7 @@ export const BatteryInspect: FC = () => {
               </td>
               <td className="px-6 py-4">
                 <Badge variant={b.severity === 'CRITICAL' ? 'error' : b.severity === 'WARNING' ? 'warning' : 'info'}>
-                  {b.severity}
+                  {statusLabel(b.severity)}
                 </Badge>
               </td>
               <td className="px-6 py-4">

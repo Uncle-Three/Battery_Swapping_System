@@ -26,9 +26,16 @@ export const Permissions = {
   MAINTENANCE_CREATE: "maintenance:create",
   MAINTENANCE_READ: "maintenance:read",
   BATTERY_HEALTH_READ: "battery-health:read",
+  BATTERY_HEALTH_WRITE: "battery-health:write",
+  NOTIFICATIONS_READ_SELF: "notifications:read:self",
+  REPLACEMENTS_READ_SELF: "replacement-requests:read:self",
   REPORTS_READ: "reports:read",
   INVENTORY_READ: "inventory:read",
   SETTINGS_MANAGE: "settings:manage",
+  STATION_ASSIGNMENTS_MANAGE: "station-assignments:manage",
+  SAFETY_RULES_MANAGE: "safety-rules:manage",
+  COMPATIBILITY_MANAGE: "compatibility:manage",
+  BOOKINGS_APPROVE: "bookings:approve",
 } as const;
 
 export type Permission = (typeof Permissions)[keyof typeof Permissions];
@@ -44,6 +51,9 @@ export const RolePermissions = {
     Permissions.BOOKINGS_CANCEL_SELF,
     Permissions.SWAPS_READ_SELF,
     Permissions.PAYMENTS_MANAGE_SELF,
+    Permissions.BATTERY_HEALTH_READ,
+    Permissions.NOTIFICATIONS_READ_SELF,
+    Permissions.REPLACEMENTS_READ_SELF,
   ],
   [Roles.STAFF]: [
     Permissions.PROFILE_READ_SELF,
@@ -62,6 +72,7 @@ export const RolePermissions = {
     Permissions.MAINTENANCE_CREATE,
     Permissions.MAINTENANCE_READ,
     Permissions.BATTERY_HEALTH_READ,
+    Permissions.BATTERY_HEALTH_WRITE,
   ],
   [Roles.MANAGER]: [
     Permissions.PROFILE_READ_SELF,
@@ -70,7 +81,9 @@ export const RolePermissions = {
     Permissions.INVENTORY_READ,
     Permissions.STATIONS_READ,
     Permissions.BATTERIES_READ,
+    Permissions.BATTERY_HEALTH_READ,
     Permissions.SWAPS_READ_ANY,
+    Permissions.BOOKINGS_APPROVE,
   ],
   [Roles.ADMIN]: [PermissionWildcard],
 } as const satisfies Record<Role, readonly PermissionGrant[]>;

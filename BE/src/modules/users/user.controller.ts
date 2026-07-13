@@ -12,6 +12,13 @@ export const userController = {
     res.status(200).json({ success: true, data });
   }) satisfies RequestHandler,
 
+  getMyVehicles: (async (req, res) => {
+    const data = await userService.getVehicles(req.user!.id);
+    res.status(200).json({ success: true, data });
+  }) satisfies RequestHandler,
+  getMyVehicleDetail: (async (req, res) => res.status(200).json({ success: true, data: await userService.getVehicleDetail(req.user!.id, String(req.params.id)) })) satisfies RequestHandler,
+  getDashboard: (async (req, res) => res.status(200).json({ success: true, data: await userService.getDashboard(req.user!.id) })) satisfies RequestHandler,
+
   list: (async (_req, res) => {
     const data = await userService.list();
     res.status(200).json({ success: true, data });

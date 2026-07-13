@@ -29,6 +29,9 @@ export const Permissions = {
   REPORTS_READ: 'reports:read',
   INVENTORY_READ: 'inventory:read',
   SETTINGS_MANAGE: 'settings:manage',
+  BOOKINGS_APPROVE: 'bookings:approve',
+  NOTIFICATIONS_READ_SELF: 'notifications:read:self',
+  STATION_ASSIGNMENTS_MANAGE: 'station-assignments:manage',
 } as const;
 
 export type Permission = (typeof Permissions)[keyof typeof Permissions];
@@ -44,6 +47,8 @@ export const RolePermissions = {
     Permissions.BOOKINGS_CANCEL_SELF,
     Permissions.SWAPS_READ_SELF,
     Permissions.PAYMENTS_MANAGE_SELF,
+    Permissions.BATTERY_HEALTH_READ,
+    Permissions.NOTIFICATIONS_READ_SELF,
   ],
   [UserRole.STAFF]: [
     Permissions.PROFILE_READ_SELF,
@@ -71,6 +76,7 @@ export const RolePermissions = {
     Permissions.STATIONS_READ,
     Permissions.BATTERIES_READ,
     Permissions.SWAPS_READ_ANY,
+    Permissions.BOOKINGS_APPROVE,
   ],
   [UserRole.ADMIN]: [PermissionWildcard],
 } as const satisfies Record<UserRoleType, readonly PermissionGrant[]>;

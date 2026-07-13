@@ -1,218 +1,88 @@
 # Battery Swapping Backend
 
-Backend Node.js + TypeScript + Express + PostgreSQL + Prisma cho Battery Swapping System.
+TypeScript, Node.js, Express 5, Prisma ORM 6 and MongoDB REST API.
 
-## Yeu cau
+## Prerequisites
 
-- Node.js 20+ khuyen nghi.
-- npm.
-- Docker Desktop neu muon chay PostgreSQL bang `docker-compose.yml`.
-- Port mac dinh:
-  - Backend: `http://localhost:5000`
-  - Frontend dev: `http://localhost:5173`
-  - PostgreSQL: `localhost:5432`
+- Node.js 20+
+- npm
+- Docker Desktop for the local MongoDB replica set, or MongoDB Atlas with replica-set/transaction support
 
-## Cai dat lan dau
-
-Dung terminal tai root project hoac thu muc `BE`.
-
-Neu dang o root project:
-
-```bash
-cd BE
-npm install
-```
-
-Tao file env:
-
-```bash
-cp .env.example .env
-```
-
-Tren Windows PowerShell neu khong dung duoc `cp`:
+## Local setup (Windows PowerShell)
 
 ```powershell
 Copy-Item .env.example .env
-```
-
-File `.env.example` da co san config local:
-
-```env
-NODE_ENV=development
-PORT=5000
-DATABASE_URL="postgresql://SuperAdmin:12345678@localhost:5432/battery_swap_db?schema=public"
-CLIENT_URL="http://localhost:5173"
-```
-
-Khi push code len repo, khong push file `.env` that. Team chi can copy tu `.env.example`.
-
-## Chay database local
-
-Tu root project, chay PostgreSQL bang Docker:
-
-```bash
-docker compose up -d postgres
-```
-
-Config database trong `docker-compose.yml`:
-
-- User: `SuperAdmin`
-- Password: `12345678`
-- Database: `battery_swap_db`
-- Port: `5432`
-
-Kiem tra container:
-
-```bash
-docker compose ps
-```
-
-Tat database khi khong dung:
-
-```bash
-docker compose down
-```
-
-Neu muon xoa luon data volume local:
-
-```bash
-docker compose down -v
-```
-
-## Setup Prisma va seed data
-
-Sau khi PostgreSQL da chay va `.env` dung `DATABASE_URL`, vao thu muc `BE`:
-
-```bash
+cd ..
+docker compose up -d
+cd BE
+npm install
+npm run prisma:validate
 npm run prisma:generate
-npm run prisma:migrate
-npm run prisma:seed
-```
-
-`prisma:migrate` se apply migrations trong `prisma/migrations`.
-
-`prisma:seed` tao data demo:
-
-- `admin@batteryswap.local`
-- `member@batteryswap.local`
-- `staff@batteryswap.local`
-- `technician@batteryswap.local`
-- `manager@batteryswap.local`
-
-Password demo cho tat ca user:
-
-```text
-123456
-```
-
-## Chay backend dev
-
-Trong thu muc `BE`:
-
-```bash
+npm run prisma:push
+npm run prisma:indexes
+npm run db:seed
 npm run dev
 ```
 
-Server se listen theo `PORT` trong `.env`, mac dinh:
+The local connection is `mongodb://localhost:27017/battery_swap_db?replicaSet=rs0`. For Atlas, replace `DATABASE_URL` with its `mongodb+srv://` URL. Never commit real credentials. MongoDB must run as a replica set because authentication, admin and payment flows use transactions.
 
-```text
-http://localhost:5000
-```
+## API and Swagger
 
-Kiem tra server:
+- API base: `http://localhost:5000/api`
+- Health: `GET http://localhost:5000/api/v1/health`
+- Database health: `GET http://localhost:5000/api/v1/health/database`
+- Swagger UI: `http://localhost:5000/api-docs`
+- OpenAPI JSON: `http://localhost:5000/api-docs.json`
 
-```text
-GET http://localhost:5000/health
-```
+Use Swagger's **Authorize** button and enter the access JWT. Swagger is disabled in production unless `SWAGGER_ENABLED=true`.
 
-Swagger UI:
+## Commands
 
-```text
-http://localhost:5000/api-docs
-```
-
-Base API:
-
-```text
-http://localhost:5000/api
-```
-
-## Chay production build local
-
-Trong thu muc `BE`:
-
-```bash
+```powershell
+npm run dev
 npm run build
 npm start
-```
-
-## Ket noi voi frontend
-
-BE cho phep CORS theo bien:
-
-```env
-CLIENT_URL="http://localhost:5173"
-```
-
-FE can cau hinh base API:
-
-```env
-VITE_API_URL=http://localhost:5000/api
-```
-
-Auth hien tai dung:
-
-- Access token: FE gui qua header `Authorization: Bearer <token>`.
-- Refresh token: BE set vao httpOnly cookie `refreshToken`.
-- FE axios can `withCredentials: true` de refresh/logout hoat dong.
-
-## Scripts
-
-```bash
-npm run dev              # Chay dev server bang tsx watch
-npm run build            # Compile TypeScript ra dist
-npm start                # Chay dist/server.js
-npm run typecheck        # Kiem tra TypeScript
-npm run prisma:generate  # Generate Prisma client
-npm run prisma:migrate   # Apply migration dev
-npm run prisma:studio    # Mo Prisma Studio
-npm run prisma:seed      # Seed data demo
-```
-
-## Cau truc thu muc
-
-- `prisma/`: Prisma schema, migrations, seed script.
-- `src/app.ts`: Express app va middleware.
-- `src/server.ts`: Bootstrap roles, start server, graceful shutdown.
-- `src/config/`: environment, database, CORS, Swagger.
-- `src/constants/`: roles, permissions, status constants.
-- `src/common/`: shared errors, middleware, utils, types.
-- `src/modules/`: business modules.
-- `src/routes/`: API route composition.
-
-## Endpoint nhanh
-
-- `GET /health`
-- `POST /api/auth/login`
-- `POST /api/auth/register`
-- `POST /api/auth/refresh`
-- `POST /api/auth/logout`
-- `GET /api/users/me`
-- `PATCH /api/users/me`
-- `GET /api/admin/users`
-- `PATCH /api/admin/users/:id/role`
-- `PATCH /api/admin/users/:id/status`
-- `GET /api/admin/roles`
-- `GET /api/admin/permissions`
-
-## Luu y cho team tiep tuc lam
-
-- Auth, user profile va admin user management da co flow that voi Prisma.
-- Mot so module domain nhu stations, batteries, bookings, swaps, payments, maintenance, reports hien con repository skeleton/mock. Xem them `BACKEND_CURRENT_CONTEXT.md` de nam ro context truoc khi lam tiep.
-- Sau khi sua Prisma schema, nho chay:
-
-```bash
-npm run prisma:migrate
+npm run typecheck
+npm test
+npm run prisma:validate
 npm run prisma:generate
+npm run prisma:push
+npm run prisma:indexes
+npm run prisma:studio
+npm run db:reset
+npm run db:seed
+npm run db:repair-battery-codes
 ```
 
+Use `db:repair-battery-codes` once on legacy databases whose battery documents predate the required `batteryCode` field. The command is idempotent and leaves valid codes unchanged.
+
+Reset development data explicitly in PowerShell:
+
+```powershell
+$env:ALLOW_DATABASE_RESET="true"
+npm run db:reset
+npm run db:seed
+```
+
+The reset and development seed refuse to run when `NODE_ENV=production`.
+
+## Data and money
+
+Money is stored as integer VND (VND has no fractional minor unit). The fields named `balance`, `amount`, `price`, `cost`, and `costEstimate` must never receive floating-point values. VNPay callbacks verify the server signature and amount; a conditional transaction state update prevents duplicate wallet credit.
+
+## Architecture
+
+- `prisma/`: MongoDB schema and seed
+- `src/config/`: validated environment, singleton Prisma client, CORS and OpenAPI
+- `src/common/`: errors, middleware, shared types and utilities
+- `src/modules/`: route/controller/service/repository business modules
+- `scripts/reset-database.ts`: guarded MongoDB development reset
+- `src/tests/`: Vitest/Supertest tests (use a dedicated test database for database tests)
+
+## Production checklist
+
+- Use managed secrets and a production MongoDB replica set.
+- Set a strict `CORS_ORIGIN`, strong JWT secrets, `NODE_ENV=production`, and intentional `SWAGGER_ENABLED` value.
+- Back up MongoDB and test recovery before production changes.
+- Configure TLS, reverse-proxy trust, log collection, alerts and database indexes.
+- Never use the production database from automated tests.

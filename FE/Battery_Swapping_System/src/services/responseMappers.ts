@@ -8,13 +8,8 @@ type ProfileDto = Omit<Profile, 'balance'> & {
   balance?: string | number | null;
 };
 
-const mapBalance = (balance: string | number | null | undefined): string => {
-  if (balance === null || balance === undefined) {
-    return '0';
-  }
-
-  return String(balance);
-};
+const mapBalance = (balance: string | number | null | undefined): string | undefined =>
+  balance === null || balance === undefined ? undefined : String(balance);
 
 export const mapUserDto = (user: UserDto): User => ({
   ...user,

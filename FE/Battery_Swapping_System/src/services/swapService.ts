@@ -1,69 +1,24 @@
+import { API_ENDPOINTS } from '../constants/endpoints';
+import apiClient, { unwrapData } from './apiClient';
 import type { SwapTransaction } from '../types';
-
+export type StaffBayBooking = { id: string; stationId: string; serviceBayId: string; status: string; scheduledStart?: string; scheduledEnd?: string; mandatory?: boolean; reason?: string | null; user: { fullName: string; email: string; phone?: string }; vehicle?: { name: string; plateNumber: string; batteryType?: string | null }; battery?: { serialNumber: string } };
+export type StaffServiceBay = { id: string; bayCode: string; bayName: string; status: string; defaultDurationMinutes: number; bookings: StaffBayBooking[] };
+export type StaffStation = { id: string; name: string; address: string; serviceBays: StaffServiceBay[] };
+export type StaffBooking = { id: string; stationId: string; serviceBayId?: string | null; status: string; scheduledStart?: string; scheduledEnd?: string; reason?: string | null; mandatory?: boolean; user: { fullName: string; email: string; phone?: string }; vehicle?: { name: string; plateNumber: string; batteryType?: string | null; }; battery?: { serialNumber: string }; serviceBay?: StaffServiceBay | null; station?: StaffStation };
+export type StaffSwap = { id: string; workflowStatus: string; nextActions?: string[]; booking?: StaffBooking; vehicle?: { name: string; plateNumber: string; batteryType?: string | null; }; batteryIn?: { serialNumber: string; soc: number; soh: number; temperature: number; voltage: number }; batteryOut?: { serialNumber: string; soc: number; soh: number }; inspection?: unknown; stepHistory?: Array<{ id: string; fromStatus?: string; toStatus: string; createdAt: string }> };
+export type InspectionInput = { serialNumber: string; soc: number; soh: number; temperature?: number; voltage?: number; physicalCondition: string; outcome: 'AVAILABLE' | 'MAINTENANCE' | 'QUARANTINED' | 'RETIRED'; notes?: string };
 export const swapService = {
-  initiateSwap: async (_bookingId: string): Promise<any> => {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        resolve({
-          success: true,
-          message: 'Swap initiated successfully. Please approach the station.',
-          transactionId: 'tx-1234',
-        });
-      }, 500);
-    });
-  },
-
-  processSwap: async (_data: { rfidCard?: string; licensePlate?: string }): Promise<SwapTransaction> => {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        resolve({
-          id: 'tx-1234',
-          userId: 'u-1',
-          userName: 'Tuấn Anh',
-          stationId: 'st-1',
-          stationName: 'Trạm Sạc GreenCharge Quận 1',
-          batteryInId: 'b-old-99',
-          batteryInSoc: 12,
-          batteryOutId: 'b-1',
-          batteryOutSoc: 98,
-          cost: 45000,
-          status: 'SUCCESS',
-          createdAt: new Date().toISOString(),
-        });
-      }, 800);
-    });
-  },
-
-  getSwapHistory: async (): Promise<SwapTransaction[]> => {
-    return [
-      {
-        id: 'tx-1234',
-        userId: 'u-1',
-        userName: 'Tuấn Anh',
-        stationId: 'st-1',
-        stationName: 'Trạm Sạc GreenCharge Quận 1',
-        batteryInId: 'b-old-99',
-        batteryInSoc: 12,
-        batteryOutId: 'b-1',
-        batteryOutSoc: 98,
-        cost: 45000,
-        status: 'SUCCESS',
-        createdAt: new Date(Date.now() - 3600000 * 2).toISOString(),
-      },
-      {
-        id: 'tx-1233',
-        userId: 'u-1',
-        userName: 'Tuấn Anh',
-        stationId: 'st-2',
-        stationName: 'Trạm Sạc GreenCharge Quận 7',
-        batteryInId: 'b-old-88',
-        batteryInSoc: 5,
-        batteryOutId: 'b-3',
-        batteryOutSoc: 100,
-        cost: 50000,
-        status: 'SUCCESS',
-        createdAt: new Date(Date.now() - 3600000 * 48).toISOString(),
-      },
-    ];
-  },
+  context: async () => unwrapData<{ stations: StaffStation[], activeSwap: StaffSwap | null }>(await apiClient.get(API_ENDPOINTS.SWAP.CONTEXT)),
+  history: async () => unwrapData<StaffSwap[]>(await apiClient.get(API_ENDPOINTS.SWAP.STAFF_HISTORY)),
+  lookup: async (bookingId: string, stationId: string) => unwrapData<StaffBooking>(await apiClient.post(API_ENDPOINTS.SWAP.LOOKUP, { bookingId, stationId })),
+  checkIn: async (bookingId: string, stationId: string, serviceBayId: string) => unwrapData<StaffSwap>(await apiClient.post(API_ENDPOINTS.SWAP.CHECK_IN(bookingId), { stationId, serviceBayId })),
+  get: async (id: string) => unwrapData<StaffSwap>(await apiClient.get(API_ENDPOINTS.SWAP.DETAILS(id))),
+  verify: async (id: string) => unwrapData<StaffSwap>(await apiClient.post(API_ENDPOINTS.SWAP.VERIFY(id))),
+  remove: async (id: string, serialNumber: string, soc: number) => unwrapData<StaffSwap>(await apiClient.post(API_ENDPOINTS.SWAP.REMOVE(id), { serialNumber, soc })),
+  inspect: async (id: string, input: InspectionInput) => unwrapData<StaffSwap>(await apiClient.post(API_ENDPOINTS.SWAP.INSPECT(id), input)),
+  assign: async (id: string, serialNumber: string) => unwrapData<StaffSwap>(await apiClient.post(API_ENDPOINTS.SWAP.ASSIGN(id), { serialNumber })),
+  install: async (id: string, serialNumber: string) => unwrapData<StaffSwap>(await apiClient.post(API_ENDPOINTS.SWAP.INSTALL(id), { serialNumber })),
+  requestDirectPayment: async (id: string) => unwrapData<StaffSwap>(await apiClient.post(API_ENDPOINTS.SWAP.COLLECT_PAYMENT(id), {})),
+  rollback: async (id: string, reason: string) => unwrapData<StaffSwap>(await apiClient.post(API_ENDPOINTS.SWAP.ROLLBACK(id), { reason })),
+  getSwapHistory: async () => unwrapData<SwapTransaction[]>(await apiClient.get(API_ENDPOINTS.SWAP.HISTORY)),
 };

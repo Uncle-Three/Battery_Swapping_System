@@ -9,7 +9,7 @@ type UpdateMeInput = z.infer<typeof updateMeSchema>;
 type UserRepository = typeof userRepository;
 
 type UserServiceDependencies = {
-  repository: Pick<UserRepository, "findById" | "findByPhone" | "updateProfile" | "findMany" | "isUniqueConstraintError">;
+  repository: Pick<UserRepository, "findById" | "findByPhone" | "updateProfile" | "findMany" | "findVehicles" | "findVehicleDetail" | "findMemberDashboard" | "isUniqueConstraintError">;
 };
 
 export const createUserService = (dependencies: UserServiceDependencies) => ({
@@ -58,6 +58,18 @@ export const createUserService = (dependencies: UserServiceDependencies) => ({
   list: async () => {
     const users = await dependencies.repository.findMany();
     return users.map(userMapper.toResponse);
+  },
+
+  getVehicles: (userId: string) => dependencies.repository.findVehicles(userId),
+  getVehicleDetail: async (userId: string, id: string) => {
+    const vehicle = await dependencies.repository.findVehicleDetail(userId, id);
+    if (!vehicle) throw new NotFoundError("Vehicle not found");
+    return vehicle;
+  },
+  getDashboard: async (userId: string) => {
+    const dashboard = await dependencies.repository.findMemberDashboard(userId);
+    if (!dashboard) throw new NotFoundError("User not found");
+    return dashboard;
   },
 });
 

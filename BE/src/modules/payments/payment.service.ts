@@ -10,14 +10,6 @@ export const paymentService = {
     return wallet ?? { userId, balance: 0 };
   },
 
-  // ── Legacy ────────────────────────────────────────────────────────────────
-
-  createTopup: (userId: string, input: unknown) =>
-    paymentRepository.createTopup(userId, input),
-
-  purchaseSubscription: (userId: string, input: unknown) =>
-    paymentRepository.purchaseSubscription(userId, input),
-
   // ── VNPay ─────────────────────────────────────────────────────────────────
 
   /**
@@ -87,8 +79,12 @@ export const paymentService = {
     // 5. Xử lý kết quả thanh toán
     const isSuccess = vnp_ResponseCode === "00" && vnp_TransactionStatus === "00";
 
+    if (!txn.swapTransactionId) {
+      return { RspCode: "01", Message: "Booking Payment Not Found" };
+    }
+
     if (isSuccess) {
-      await paymentRepository.confirmVNPayTopup(txn.id, txn.userId, txn.amount);
+      await paymentRepository.confirmVNPayBookingPayment(txn.id, txn.amount);
       return { RspCode: "00", Message: "Confirm Success" };
     } else {
       await paymentRepository.failVNPayTopup(txn.id);
@@ -99,24 +95,82 @@ export const paymentService = {
   /**
    * Bước 2b: Xử lý Return URL (user được redirect về sau thanh toán).
    * Chỉ dùng để hiển thị kết quả cho FE, KHÔNG cập nhật DB ở đây.
+   *
+   * KHÔNG throw lỗi — trả về success: false để FE hiển thị trang kết quả.
+   * (IPN mới là nơi strict verify, vì IPN là server-to-server và cập nhật DB)
    */
   handleVNPayReturn: async (query: Record<string, string>) => {
-    const isValid = verifyVNPaySignature(query);
-    if (!isValid) {
-      throw new BadRequestError("Chữ ký không hợp lệ");
+    const { vnp_TxnRef, vnp_ResponseCode, vnp_Amount, vnp_SecureHash } = query;
+
+    // Không có params VNPay => trả về invalid
+    if (!vnp_ResponseCode || !vnp_SecureHash) {
+      return {
+        success: false,
+        txnRef: vnp_TxnRef ?? "",
+        amount: 0,
+        message: "Không có thông tin phản hồi từ VNPay",
+        responseCode: vnp_ResponseCode ?? "MISSING",
+        signatureValid: false,
+      };
     }
 
-    const { vnp_TxnRef, vnp_ResponseCode, vnp_Amount } = query;
-
-    const success = vnp_ResponseCode === "00";
+    const signatureValid = verifyVNPaySignature(query);
+    const success = vnp_ResponseCode === "00" && signatureValid;
     const amount = parseInt(vnp_Amount ?? "0") / 100;
+    const bookingId = vnp_TxnRef ? await paymentRepository.findBookingIdByPayment(vnp_TxnRef) : null;
 
     return {
       success,
-      txnRef: vnp_TxnRef,
+      txnRef: vnp_TxnRef ?? "",
       amount,
-      message: success ? "Thanh toán thành công" : "Thanh toán thất bại",
+      message: !signatureValid
+        ? "Chữ ký không hợp lệ — kết quả không được xác nhận"
+        : success
+          ? "Thanh toán thành công"
+          : "Thanh toán thất bại",
       responseCode: vnp_ResponseCode,
+      signatureValid,
+      bookingId,
     };
+  },
+
+  // ── Booking Payment ────────────────────────────────────────────────────────
+
+  /**
+   * Lấy trạng thái thanh toán của booking (invoice + payments + wallet).
+   * Dùng để hiển thị trên trang payment của member.
+   */
+  getBookingPaymentStatus: async (userId: string, bookingId: string) => {
+    const data = await paymentRepository.findBookingPaymentStatus(userId, bookingId);
+    if (!data) throw new BadRequestError("Booking không tồn tại hoặc không thuộc về bạn");
+    return data;
+  },
+
+  /**
+   * Khởi tạo VNPay payment cho booking cụ thể.
+   * Amount lấy từ invoice đã được Staff tạo — không nhận từ FE.
+   */
+  initiateVNPayBookingPayment: async (userId: string, bookingId: string, ipAddr: string) => {
+    const data = await paymentRepository.findBookingPaymentStatus(userId, bookingId);
+    if (!data) throw new BadRequestError("Booking không tồn tại hoặc không thuộc về bạn");
+    if (!data.swap) throw new BadRequestError("Swap chưa được xử lý, chưa thể thanh toán");
+    if (!data.swap.invoice) throw new BadRequestError("Chưa có hóa đơn cho lần thay pin này");
+    if (data.swap.invoice.status === "PAID") throw new BadRequestError("Invoice đã được thanh toán");
+    if (data.swap.workflowStatus !== "PAYMENT_PENDING") throw new BadRequestError("Lần thay pin chưa sẵn sàng để thanh toán");
+
+    const amount = data.swap.invoice.amount;
+    const swapId = data.swap.id;
+    const existingPending = data.swap.payments.find((payment) => payment.paymentMethod === "VNPAY" && payment.status === "PENDING");
+    if (existingPending?.vnpTxnRef) {
+      const paymentUrl = createVNPayPaymentUrl({ amount: existingPending.amount, txnRef: existingPending.vnpTxnRef, orderInfo: existingPending.description ?? `Thanh toan doi pin booking ${bookingId}`, ipAddr });
+      return { paymentUrl, txnRef: existingPending.vnpTxnRef, amount: existingPending.amount };
+    }
+    const txnRef = Date.now().toString() + userId.replace(/-/g, "").slice(0, 6);
+    const description = `Thanh toan doi pin booking ${bookingId}`;
+
+    await paymentRepository.createPendingVNPayBookingPayment(userId, swapId, amount, txnRef, description);
+
+    const paymentUrl = createVNPayPaymentUrl({ amount, txnRef, orderInfo: description, ipAddr });
+    return { paymentUrl, txnRef, amount };
   },
 };

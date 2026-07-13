@@ -1,147 +1,69 @@
-import { useState, type FC, type FormEvent } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { Clock3, MapPin, UserRound, Warehouse } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../../../../components/ui/Button';
-import { Input } from '../../../../components/ui/Input';
-import { Badge } from '../../../../components/ui/Badge';
-import { CheckCircle2, UserCheck, ShieldAlert, ChevronRight } from 'lucide-react';
+import { swapService, type StaffBooking, type StaffStation, type StaffSwap } from '../../../../services/swapService';
+import { getApiErrorMessage } from '../../../../services/apiClient';
 
-export const VerifyCustomer: FC = () => {
-  const [rfid, setRfid] = useState('RFID-9921');
-  const [plate, setPlate] = useState('29A-12345');
-  const [result, setResult] = useState<any>(null);
-  const [searching, setSearching] = useState(false);
+export const VerifyCustomer = () => {
+  const [stations, setStations] = useState<StaffStation[]>([]);
+  const [activeSwap, setActiveSwap] = useState<StaffSwap | null>(null);
+  const [stationId, setStationId] = useState('');
+  const [booking, setBooking] = useState<StaffBooking | null>(null);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  const handleVerify = (e: FormEvent) => {
-    e.preventDefault();
-    if (!rfid && !plate) return;
-    
-    setSearching(true);
-    setTimeout(() => {
-      setResult({
-        user: {
-          id: 'u-55',
-          name: 'Nguyễn Văn Hùng',
-          email: 'hung.nguyen@gmail.com',
-          role: 'MEMBER',
-          rfidCard: rfid || 'RFID-9921',
-          licensePlate: plate || '29A-12345',
-        },
-        activeBooking: {
-          id: 'bk-551',
-          stationName: 'Trạm Sạc GreenCharge Quận 1',
-          status: 'PENDING',
-          expiryTime: new Date(Date.now() + 15 * 60000).toISOString(),
-        },
-        subscription: {
-          status: 'ACTIVE',
-          expiresAt: '2026-12-31',
-          balance: 250000,
-        },
-      });
-      setSearching(false);
-    }, 600);
+  const selectedStation = useMemo(() => stations.find((station) => station.id === stationId), [stations, stationId]);
+  const occupiedBays = useMemo(() => selectedStation?.serviceBays.filter((bay) => bay.bookings.length > 0) ?? [], [selectedStation]);
+
+  useEffect(() => {
+    swapService.context().then((data) => {
+      setStations(data.stations);
+      setStationId(data.stations[0]?.id ?? '');
+      setActiveSwap(data.activeSwap);
+    }).catch((cause) => setError(getApiErrorMessage(cause)));
+  }, []);
+
+  const selectBayBooking = async (bookingId: string) => {
+    setLoading(true); setError(''); setBooking(null);
+    try { setBooking(await swapService.lookup(bookingId, stationId)); }
+    catch (cause) { setError(getApiErrorMessage(cause)); }
+    finally { setLoading(false); }
   };
 
-  const handleProceedSwap = () => {
-    // Navigate directly to Swap Process page
-    navigate('/dashboard/staff/swap');
+  const checkIn = async () => {
+    if (!booking?.serviceBayId) return;
+    setLoading(true); setError('');
+    try {
+      const swap = await swapService.checkIn(booking.id, stationId, booking.serviceBayId);
+      navigate(`/staff/swaps/${swap.id}`);
+    } catch (cause) { setError(getApiErrorMessage(cause)); } finally { setLoading(false); }
   };
 
-  return (
-    <div className="flex flex-col gap-6 text-left max-w-4xl">
-      <div>
-        <h2 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white">
-          Xác thực thông tin Khách hàng
-        </h2>
-        <p className="text-sm text-slate-550 dark:text-slate-400 mt-1">
-          Nhập RFID thẻ thành viên hoặc biển số xe máy điện để tra cứu thông tin đặt trước và gói cước.
-        </p>
-      </div>
-
-      <div className="grid md:grid-cols-3 gap-6">
-        {/* Verification Form */}
-        <form onSubmit={handleVerify} className="bg-white dark:bg-slate-900 border border-slate-205 dark:border-slate-800 rounded-xl p-5 shadow-sm flex flex-col gap-4 h-fit md:col-span-1">
-          <h3 className="font-bold text-sm text-slate-700 dark:text-slate-300 uppercase tracking-wider">
-            Tra cứu
-          </h3>
-          <Input
-            label="Mã RFID thẻ"
-            placeholder="Ví dụ: 12345678"
-            value={rfid}
-            onChange={(e) => setRfid(e.target.value)}
-          />
-          <div className="text-xs text-center text-slate-400 font-semibold">- HOẶC -</div>
-          <Input
-            label="Biển số xe"
-            placeholder="Ví dụ: 29A-12345"
-            value={plate}
-            onChange={(e) => setPlate(e.target.value)}
-          />
-          <Button type="submit" loading={searching} className="w-full mt-2">
-            Tìm kiếm
-          </Button>
-        </form>
-
-        {/* Results display */}
-        <div className="md:col-span-2">
-          {result ? (
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6 shadow-sm flex flex-col gap-6">
-              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-850 pb-4">
-                <div className="flex items-center gap-3 text-green-600 dark:text-green-500">
-                  <CheckCircle2 className="h-6 w-6 text-green-650" />
-                  <h3 className="font-bold text-lg">Thông tin thành viên hợp lệ</h3>
-                </div>
-                <Badge variant="success">Active Plan</Badge>
-              </div>
-
-              <div className="grid sm:grid-cols-2 gap-4 text-sm">
-                <div>
-                  <span className="text-slate-500 block text-xs uppercase font-semibold">Tên khách hàng:</span>
-                  <p className="font-bold text-slate-850 dark:text-slate-100 text-base mt-0.5">{result.user.name}</p>
-                </div>
-                <div>
-                  <span className="text-slate-550 block text-xs uppercase font-semibold">Email:</span>
-                  <p className="font-semibold text-slate-800 dark:text-slate-200 text-base mt-0.5">{result.user.email}</p>
-                </div>
-                <div>
-                  <span className="text-slate-500 block text-xs uppercase font-semibold">Thẻ RFID:</span>
-                  <p className="font-mono text-sm mt-0.5">{result.user.rfidCard}</p>
-                </div>
-                <div>
-                  <span className="text-slate-500 block text-xs uppercase font-semibold">Biển số xe:</span>
-                  <p className="font-semibold text-sm mt-0.5">{result.user.licensePlate}</p>
-                </div>
-              </div>
-
-              {result.activeBooking && (
-                <div className="p-4 bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-900/30 rounded-xl flex items-center justify-between">
-                  <div className="flex flex-col gap-1">
-                    <div className="flex items-center gap-2 font-bold text-green-800 dark:text-green-400">
-                      <UserCheck className="h-5 w-5" />
-                      <span>Lịch đặt đổi pin khả dụng</span>
-                    </div>
-                    <div className="text-xs text-green-700 dark:text-green-300">
-                      Mã đặt chỗ: <span className="font-mono font-bold">{result.activeBooking.id}</span> | 
-                      Hạn chót: <span className="font-semibold">{new Date(result.activeBooking.expiryTime).toLocaleTimeString()}</span>
-                    </div>
-                  </div>
-                  <Button variant="primary" className="flex items-center gap-1" onClick={handleProceedSwap}>
-                    <span>Tiến hành đổi pin</span>
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 border-dashed rounded-xl p-12 text-center text-slate-500 flex flex-col items-center gap-3">
-              <ShieldAlert className="h-10 w-10 text-slate-400" />
-              <p className="text-sm">Chưa có kết quả tìm kiếm. Nhập mã thẻ hoặc biển số ở cột bên trái để bắt đầu.</p>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
+  return <div className="max-w-5xl space-y-6">
+    <header><h1 className="text-3xl font-black">Chọn khoang có khách để thay pin</h1><p className="mt-1 text-slate-500">Chỉ những khoang có lịch đã được duyệt mới xuất hiện. Nhân viên chọn đúng khoang đang có khách để bắt đầu kiểm tra xe và pin.</p></header>
+    {!stations.length && !error && <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-900">Bạn chưa được phân công vào trạm đang hoạt động.</p>}
+    {activeSwap && <div className="rounded-2xl border-2 border-blue-500 bg-blue-50 p-6 shadow-sm">
+      <h2 className="text-lg font-black text-blue-900">Tiếp tục công việc đang dang dở</h2>
+      <p className="mt-2 text-sm font-semibold text-blue-800">Bạn đang có quá trình thay pin đang thực hiện tại khoang <strong>{activeSwap.booking?.serviceBay?.bayCode}</strong>. Vui lòng hoàn tất quá trình này trước khi tiếp nhận xe khác.</p>
+      <Button className="mt-4" onClick={() => navigate(`/staff/swaps/${activeSwap.id}`)}>Tiếp tục quá trình thay pin</Button>
+    </div>}
+    {selectedStation && <section data-testid="assigned-station" className="rounded-2xl border bg-white p-5">
+      <p className="text-sm font-semibold text-slate-500">Trạm được phân công</p>
+      <div className="mt-2 flex items-center gap-3"><div className="rounded-xl bg-emerald-50 p-2 text-emerald-700"><Warehouse className="h-5 w-5" /></div><div><p className="font-black">{selectedStation.name}</p><p className="mt-0.5 flex items-center gap-1.5 text-sm text-slate-500"><MapPin className="h-4 w-4" />{selectedStation.address}</p></div></div>
+      <p className="mt-3 rounded-lg bg-slate-50 p-2.5 text-xs font-semibold text-slate-600">Trạm này do quản trị viên phân công. Nhân viên không thể tự thay đổi.</p>
+    </section>}
+    {error && <p role="alert" className="rounded-xl bg-red-50 p-4 text-red-700">{error}</p>}
+    {selectedStation && <section className="space-y-3"><div className="flex items-end justify-between"><div><h2 className="text-xl font-black">Khoang đang có khách</h2><p className="text-sm text-slate-500">{occupiedBays.length} khoang sẵn sàng tiếp nhận kiểm tra</p></div></div>
+      {!occupiedBays.length ? <div className="rounded-2xl border border-dashed bg-slate-50 p-10 text-center"><Warehouse className="mx-auto h-9 w-9 text-slate-400" /><p className="mt-3 font-bold">Hiện chưa có khoang nào có khách đã được duyệt</p><p className="mt-1 text-sm text-slate-500">Khoang sẽ xuất hiện tại đây sau khi quản trị viên hoặc quản lý duyệt lịch.</p></div> : <div className="grid gap-4 md:grid-cols-2">{occupiedBays.flatMap((bay) => bay.bookings.map((waitingBooking) => <article key={waitingBooking.id} className={`rounded-2xl border bg-white p-5 shadow-sm ${booking?.id === waitingBooking.id ? 'border-emerald-500 ring-2 ring-emerald-100' : 'border-slate-200'}`}>
+        <div className="flex items-start justify-between gap-3"><div><p className="font-mono text-xs font-black text-emerald-700">{bay.bayCode}</p><h3 className="text-lg font-black">{bay.bayName}</h3></div><span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-black text-emerald-700">Có khách chờ</span></div>
+        <div className="mt-4 space-y-2 text-sm"><p className="flex items-center gap-2"><UserRound className="h-4 w-4 text-slate-400" /><strong>{waitingBooking.user.fullName}</strong></p><p>Xe: <strong>{waitingBooking.vehicle?.name} · {waitingBooking.vehicle?.plateNumber}</strong></p><p className="flex items-center gap-2"><Clock3 className="h-4 w-4 text-slate-400" />{waitingBooking.scheduledStart ? new Date(waitingBooking.scheduledStart).toLocaleString('vi-VN') : 'Chưa có thời gian'}</p></div>
+        <Button className="mt-4 w-full justify-center" variant={booking?.id === waitingBooking.id ? 'secondary' : 'primary'} loading={loading && !booking} onClick={() => void selectBayBooking(waitingBooking.id)} disabled={!!activeSwap}>{booking?.id === waitingBooking.id ? 'Đã chọn khoang này' : 'Chọn khoang này'}</Button>
+      </article>))}</div>}
+    </section>}
+    {booking && <section className="rounded-2xl border border-blue-200 bg-blue-50/50 p-6"><h2 className="text-xl font-black">Xác nhận khách và xe</h2><div className="mt-4 grid gap-3 sm:grid-cols-2"><p>Khách hàng: <strong>{booking.user.fullName}</strong></p><p>Số điện thoại: <strong>{booking.user.phone || 'Chưa cập nhật'}</strong></p><p>Xe: <strong>{booking.vehicle?.name} · {booking.vehicle?.plateNumber}</strong></p><p>Loại pin: <strong>{booking.vehicle?.batteryType || 'Chưa xác định'}</strong></p><p>Khoang: <strong>{booking.serviceBay?.bayCode} · {booking.serviceBay?.bayName}</strong></p><p>Pin đã giữ: <strong>{booking.battery?.serialNumber ?? 'Chọn sau khi kiểm tra'}</strong></p></div><p className="mt-4 rounded-xl bg-white p-3 text-sm text-blue-900">Khoang này đang được lịch của khách giữ và chỉ được giải phóng khi quy trình hoàn thành hoặc bị hủy.</p><Button className="mt-4" loading={loading} onClick={() => void checkIn()}>Đã xác minh khách đã đến trạm</Button></section>}
+  </div>;
 };
+
 export default VerifyCustomer;

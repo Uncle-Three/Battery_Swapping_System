@@ -22,6 +22,7 @@ type AuthServiceDependencies = {
     | "createMemberWithWallet"
     | "isUniqueConstraintError"
     | "createRefreshSession"
+    | "isUniqueConstraintError"
     | "findRefreshSessionByTokenHash"
     | "rotateRefreshSession"
     | "revokeRefreshSessionByTokenHash"
@@ -59,14 +60,19 @@ export const createAuthService = (dependencies: AuthServiceDependencies) => ({
       throw new UnauthorizedError("Invalid credentials");
     }
 
-    const refreshToken = dependencies.createRefreshToken(user.id);
-    await dependencies.repository.createRefreshSession({
-      userId: user.id,
-      tokenHash: refreshToken.tokenHash,
-      expiresAt: refreshToken.expiresAt,
-      userAgent: context.userAgent,
-      ipAddress: context.ipAddress,
-    });
+    let refreshToken = dependencies.createRefreshToken(user.id);
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        await dependencies.repository.createRefreshSession({
+          userId: user.id, tokenHash: refreshToken.tokenHash, expiresAt: refreshToken.expiresAt,
+          userAgent: context.userAgent, ipAddress: context.ipAddress,
+        });
+        break;
+      } catch (error) {
+        if (!dependencies.repository.isUniqueConstraintError(error) || attempt === 2) throw error;
+        refreshToken = dependencies.createRefreshToken(user.id);
+      }
+    }
 
     return {
       accessToken: dependencies.signAccessToken({ sub: user.id, type: "access" }),

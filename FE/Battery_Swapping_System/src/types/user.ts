@@ -7,7 +7,7 @@ export interface User {
   role: UserRole;
   phoneNumber?: string | null;
   avatarUrl?: string | null;
-  status?: 'ACTIVE' | 'INACTIVE' | 'BLOCKED';
+  status: 'ACTIVE' | 'INACTIVE' | 'BLOCKED';
   balance?: string;
   rfidCard?: string;
   licensePlate?: string;
@@ -22,7 +22,7 @@ export interface Profile {
   phoneNumber?: string | null;
   avatarUrl?: string | null;
   status: 'ACTIVE' | 'INACTIVE' | 'BLOCKED';
-  balance: string;
+  balance?: string;
   createdAt: string;
 }
 

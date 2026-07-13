@@ -10,18 +10,6 @@ export const paymentController = {
     res.status(200).json({ success: true, data });
   }) satisfies RequestHandler,
 
-  // ── Legacy ────────────────────────────────────────────────────────────────
-
-  createTopup: (async (req, res) => {
-    const data = await paymentService.createTopup(req.user!.id, req.body);
-    res.status(201).json({ success: true, data });
-  }) satisfies RequestHandler,
-
-  purchaseSubscription: (async (req, res) => {
-    const data = await paymentService.purchaseSubscription(req.user!.id, req.body);
-    res.status(201).json({ success: true, data });
-  }) satisfies RequestHandler,
-
   // ── VNPay ─────────────────────────────────────────────────────────────────
 
   /**
@@ -63,6 +51,32 @@ export const paymentController = {
   vnpayReturn: (async (req, res) => {
     const query = req.query as Record<string, string>;
     const data = await paymentService.handleVNPayReturn(query);
+    res.status(200).json({ success: true, data });
+  }) satisfies RequestHandler,
+
+  // ── Booking Payment ────────────────────────────────────────────────────────
+
+  /**
+   * GET /payments/bookings/:bookingId
+   * Trả về booking + swap + invoice + wallet để FE hiển thị payment page.
+   */
+  getBookingPaymentStatus: (async (req, res) => {
+    const bookingId = String(req.params.id);
+    const data = await paymentService.getBookingPaymentStatus(req.user!.id, bookingId);
+    res.status(200).json({ success: true, data });
+  }) satisfies RequestHandler,
+
+  /**
+   * POST /payments/bookings/:id/vnpay
+   * Tạo VNPay URL cho booking payment. Amount từ invoice — không nhận từ FE.
+   */
+  initiateVNPayBookingPayment: (async (req, res) => {
+    const bookingId = String(req.params.id);
+    const ipAddr =
+      (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ||
+      req.socket.remoteAddress ||
+      "127.0.0.1";
+    const data = await paymentService.initiateVNPayBookingPayment(req.user!.id, bookingId, ipAddr);
     res.status(200).json({ success: true, data });
   }) satisfies RequestHandler,
 };

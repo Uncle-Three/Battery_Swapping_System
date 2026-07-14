@@ -1,5 +1,5 @@
 import { authRepository } from "./auth.repository";
-import type { LoginInput, RegisterInput } from "./auth.types";
+import type { GoogleLoginInput, LoginInput, RegisterInput } from "./auth.types";
 import { ConflictError } from "../../common/errors/conflict-error";
 import { AppError } from "../../common/errors/app-error";
 import { UnauthorizedError } from "../../common/errors/unauthorized-error";
@@ -7,10 +7,14 @@ import { comparePassword, hashPassword } from "../../common/utils/password";
 import { signAccessToken, verifyRefreshToken } from "../../common/utils/jwt";
 import { createRefreshToken, hashRefreshToken } from "../../common/utils/refresh-token";
 import { userMapper } from "../users/user.mapper";
-import { UserStatus } from "@prisma/client";
+import { AuthProvider, UserStatus } from "@prisma/client";
+import { OAuth2Client } from "google-auth-library";
+import { randomUUID } from "crypto";
+import { env } from "../../config/env";
 
 const normalizeEmail = (email: string): string => email.trim().toLowerCase();
 const dummyPasswordHash = "$2b$12$LQv3c1yqBWVHxkd0LQ4YCO4QOq7O8jT5BltjLw9hV8N77N8DVCcS";
+const googleClient = new OAuth2Client();
 
 type AuthRepository = typeof authRepository;
 
@@ -18,8 +22,11 @@ type AuthServiceDependencies = {
   repository: Pick<
     AuthRepository,
     | "findUserByEmail"
+    | "findUserByGoogleId"
     | "findUserByPhone"
     | "createMemberWithWallet"
+    | "createGoogleMemberWithWallet"
+    | "linkGoogleAccount"
     | "isUniqueConstraintError"
     | "createRefreshSession"
     | "isUniqueConstraintError"
@@ -41,6 +48,36 @@ type AuthRequestContext = {
   ipAddress?: string;
 };
 
+const createSessionResponse = async (
+  user: Awaited<ReturnType<AuthRepository["findUserByEmail"]>>,
+  dependencies: AuthServiceDependencies,
+  context: AuthRequestContext,
+) => {
+  if (!user) throw new UnauthorizedError("Invalid credentials");
+
+  let refreshToken = dependencies.createRefreshToken(user.id);
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      await dependencies.repository.createRefreshSession({
+        userId: user.id, tokenHash: refreshToken.tokenHash, expiresAt: refreshToken.expiresAt,
+        userAgent: context.userAgent, ipAddress: context.ipAddress,
+      });
+      break;
+    } catch (error) {
+      if (!dependencies.repository.isUniqueConstraintError(error) || attempt === 2) throw error;
+      refreshToken = dependencies.createRefreshToken(user.id);
+    }
+  }
+
+  return {
+    accessToken: dependencies.signAccessToken({ sub: user.id, type: "access" }),
+    refreshToken: refreshToken.token,
+    refreshTokenExpiresAt: refreshToken.expiresAt,
+    tokenType: "Bearer",
+    user: userMapper.toResponse(user),
+  };
+};
+
 export const createAuthService = (dependencies: AuthServiceDependencies) => ({
   login: async (input: LoginInput, context: AuthRequestContext = {}) => {
     const email = normalizeEmail(input.email);
@@ -60,27 +97,59 @@ export const createAuthService = (dependencies: AuthServiceDependencies) => ({
       throw new UnauthorizedError("Invalid credentials");
     }
 
-    let refreshToken = dependencies.createRefreshToken(user.id);
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      try {
-        await dependencies.repository.createRefreshSession({
-          userId: user.id, tokenHash: refreshToken.tokenHash, expiresAt: refreshToken.expiresAt,
-          userAgent: context.userAgent, ipAddress: context.ipAddress,
+    return createSessionResponse(user, dependencies, context);
+  },
+
+  loginWithGoogle: async (input: GoogleLoginInput, context: AuthRequestContext = {}) => {
+    if (!env.GOOGLE_CLIENT_ID) {
+      throw new AppError("Google login is not configured", 500);
+    }
+
+    const ticket = await googleClient.verifyIdToken({
+      idToken: input.idToken,
+      audience: env.GOOGLE_CLIENT_ID,
+    });
+    const payload = ticket.getPayload();
+    const googleId = payload?.sub;
+    const email = payload?.email ? normalizeEmail(payload.email) : undefined;
+    const fullName = payload?.name?.trim() || email?.split("@")[0] || "Google User";
+    const avatarUrl = payload?.picture;
+
+    if (!googleId || !email || payload?.email_verified !== true) {
+      throw new UnauthorizedError("Google account email is not verified");
+    }
+
+    let user = await dependencies.repository.findUserByGoogleId(googleId);
+    if (!user) {
+      const existingByEmail = await dependencies.repository.findUserByEmail(email);
+      if (existingByEmail) {
+        if (existingByEmail.googleId && existingByEmail.googleId !== googleId) {
+          throw new ConflictError("Email is already linked to another Google account");
+        }
+        user = existingByEmail.googleId
+          ? existingByEmail
+          : await dependencies.repository.linkGoogleAccount(existingByEmail.id, { googleId, avatarUrl });
+      } else {
+        const passwordHash = await dependencies.hashPassword(`google:${googleId}:${randomUUID()}`);
+        user = await dependencies.repository.createGoogleMemberWithWallet({
+          email,
+          passwordHash,
+          fullName,
+          googleId,
+          avatarUrl,
         });
-        break;
-      } catch (error) {
-        if (!dependencies.repository.isUniqueConstraintError(error) || attempt === 2) throw error;
-        refreshToken = dependencies.createRefreshToken(user.id);
       }
     }
 
-    return {
-      accessToken: dependencies.signAccessToken({ sub: user.id, type: "access" }),
-      refreshToken: refreshToken.token,
-      refreshTokenExpiresAt: refreshToken.expiresAt,
-      tokenType: "Bearer",
-      user: userMapper.toResponse(user),
-    };
+    if (user.status !== UserStatus.ACTIVE) {
+      throw new UnauthorizedError("Account is not active");
+    }
+
+    if (user.authProvider === AuthProvider.LOCAL && !user.googleId) {
+      user = await dependencies.repository.linkGoogleAccount(user.id, { googleId, avatarUrl });
+    }
+
+    return createSessionResponse(user, dependencies, context);
   },
 
   register: async (input: RegisterInput) => {

@@ -32,6 +32,12 @@ export const authService = {
     return { ...data, user: mapUserDto(data.user) };
   },
 
+  googleLogin: async (idToken: string): Promise<AuthResponse> => {
+    const response = await apiClient.post(API_ENDPOINTS.AUTH.GOOGLE, { idToken });
+    const data = unwrapData<AuthResponse>(response);
+    return { ...data, user: mapUserDto(data.user) };
+  },
+
   restoreSession: async (): Promise<AuthResponse> => {
     if (!restoreSessionPromise) {
       restoreSessionPromise = apiClient

@@ -66,7 +66,7 @@ type RetriableRequestConfig = InternalAxiosRequestConfig & {
 
 let refreshPromise: Promise<string> | null = null;
 
-const publicAuthPaths = [API_ENDPOINTS.AUTH.LOGIN, API_ENDPOINTS.AUTH.REGISTER, API_ENDPOINTS.AUTH.REFRESH];
+const publicAuthPaths = [API_ENDPOINTS.AUTH.LOGIN, API_ENDPOINTS.AUTH.GOOGLE, API_ENDPOINTS.AUTH.REGISTER, API_ENDPOINTS.AUTH.REFRESH];
 
 const clearAuthAndRedirect = () => {
   useAuthStore.getState().logout();

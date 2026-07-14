@@ -28,6 +28,15 @@ const envSchema = z.object({
   VNPAY_HASH_SECRET: z.string().min(1, "VNPAY_HASH_SECRET is required"),
   VNPAY_URL: z.string().url().default("https://sandbox.vnpayment.vn/paymentv2/vpcpay.html"),
   VNPAY_RETURN_URL: z.string().url(),
+  // Google login
+  GOOGLE_CLIENT_ID: z.string().default(""),
+  // Gmail SMTP. Empty values keep email sending disabled for local development.
+  MAIL_HOST: z.string().default("smtp.gmail.com"),
+  MAIL_PORT: z.coerce.number().int().positive().default(587),
+  MAIL_SECURE: z.stringbool().default(false),
+  MAIL_USER: z.string().default(""),
+  MAIL_PASS: z.string().default(""),
+  MAIL_FROM: z.string().default("Battery Swapping System <no-reply@example.com>"),
 });
 
 export const env = envSchema.parse(process.env);

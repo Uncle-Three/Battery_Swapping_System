@@ -22,6 +22,12 @@ enum UserStatus {
   BLOCKED
 }
 
+enum AuthProvider {
+  LOCAL
+  GOOGLE
+  BOTH
+}
+
 enum VehicleStatus {
   ACTIVE
   INACTIVE
@@ -285,6 +291,8 @@ model User {
   phone              String?
   email              String                     @unique
   passwordHash       String
+  googleId           String?                    @unique
+  authProvider       AuthProvider               @default(LOCAL)
   rfidCard           String?
   licensePlate       String?
   avatarUrl          String?
@@ -313,6 +321,7 @@ model User {
 
   @@index([roleId])
   @@index([status])
+  @@index([authProvider])
   @@map("users")
 }
 

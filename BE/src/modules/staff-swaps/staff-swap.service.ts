@@ -6,6 +6,7 @@ import { NotFoundError } from "../../common/errors/not-found-error";
 import { AppError } from "../../common/errors/app-error";
 import { assertBookingTransition, assertSwapTransition } from "../../common/state-machines/transitions";
 import { calculateBatterySoh, classifyBatterySoh, inferAccumulatedMileageKm } from "../battery-health/battery-soh";
+import { emailService } from "../email/email.service";
 
 const assertStaffScope = async (staffId: string, role: string, stationId: string) => {
   if (role === Roles.ADMIN) return;
@@ -167,11 +168,26 @@ const inspect = async (id: string, staffId: string, role: string, input: { seria
   const target = { AVAILABLE: BatteryOperationalStatus.AVAILABLE, MAINTENANCE: BatteryOperationalStatus.MAINTENANCE, QUARANTINED: BatteryOperationalStatus.QUARANTINED, RETIRED: BatteryOperationalStatus.RETIRED }[input.outcome];
   const accumulatedMileageKm = inferAccumulatedMileageKm(swap.batteryIn.accumulatedMileageKm, swap.batteryIn.soh);
   const soh = calculateBatterySoh(accumulatedMileageKm);
-  return prisma.$transaction(async (tx) => {
+  const updated = await prisma.$transaction(async (tx) => {
     await tx.battery.update({ where: { id: swap.batteryInId! }, data: { soc: input.soc, soh, estimatedSoH: soh, accumulatedMileageKm, healthClassification: classifyBatterySoh(soh), healthSource: BatteryHealthSource.LIFECYCLE_SIMULATION, temperature: input.temperature, voltage: input.voltage, operationalStatus: target } });
     await tx.batteryInspection.create({ data: { swapTransactionId: id, batteryId: swap.batteryInId!, inspectorId: staffId, ...input, soh } });
     return move(tx, id, staffId, swap.workflowStatus, SwapStatus.OLD_BATTERY_INSPECTED, { outcome: input.outcome });
   });
+  if (swap.booking?.user?.email) {
+    await emailService.sendBatteryInspectionCompleted({
+      customerName: swap.booking.user.fullName,
+      customerEmail: swap.booking.user.email,
+      serialNumber: input.serialNumber,
+      soc: input.soc,
+      soh,
+      temperature: input.temperature,
+      voltage: input.voltage,
+      physicalCondition: input.physicalCondition,
+      outcome: input.outcome,
+      notes: input.notes,
+    });
+  }
+  return updated;
 };
 
 const assignReplacement = async (id: string, staffId: string, role: string, serialNumber: string) => {

@@ -2,6 +2,7 @@ import { paymentRepository } from "./payment.repository";
 import { createVNPayPaymentUrl, verifyVNPaySignature } from "../../common/utils/vnpay";
 import { BadRequestError } from "../../common/errors/bad-request-error";
 import { prisma } from "../../config/database";
+import { emailService } from "../email/email.service";
 
 export const paymentService = {
   // ── Wallet ────────────────────────────────────────────────────────────────
@@ -100,6 +101,30 @@ export const paymentService = {
             swap.stationId,
             swap.userId,
           );
+        }
+        const completedSwap = await prisma.swapTransaction.findUnique({
+          where: { id: txn.swapTransactionId },
+          include: {
+            user: { select: { fullName: true, email: true } },
+            station: { select: { name: true } },
+            booking: { include: { vehicle: { select: { name: true, plateNumber: true } } } },
+            vehicle: { select: { name: true, plateNumber: true } },
+            batteryIn: { select: { serialNumber: true } },
+            batteryOut: { select: { serialNumber: true } },
+          },
+        });
+        if (completedSwap) {
+          await emailService.sendSwapCompleted({
+            customerName: completedSwap.user.fullName,
+            customerEmail: completedSwap.user.email,
+            stationName: completedSwap.station.name,
+            vehicleName: completedSwap.booking?.vehicle?.name ?? completedSwap.vehicle?.name,
+            plateNumber: completedSwap.booking?.vehicle?.plateNumber ?? completedSwap.vehicle?.plateNumber,
+            oldBatterySerial: completedSwap.batteryIn?.serialNumber,
+            newBatterySerial: completedSwap.batteryOut?.serialNumber,
+            amount: txn.amount,
+            completedAt: completedSwap.completedAt,
+          });
         }
       }
       return { RspCode: "00", Message: "Confirm Success" };

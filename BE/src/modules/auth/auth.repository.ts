@@ -1,4 +1,4 @@
-import { Prisma, RoleName } from "@prisma/client";
+import { AuthProvider, Prisma, RoleName } from "@prisma/client";
 import { prisma } from "../../config/database";
 
 export const authRepository = {
@@ -17,6 +17,23 @@ export const authRepository = {
   findUserByPhone: (phone: string) =>
     prisma.user.findFirst({
       where: { phone },
+      include: { role: true, wallet: true },
+    }),
+
+  findUserByGoogleId: (googleId: string) =>
+    prisma.user.findFirst({
+      where: { googleId },
+      include: { role: true, wallet: true },
+    }),
+
+  linkGoogleAccount: (userId: string, input: { googleId: string; avatarUrl?: string }) =>
+    prisma.user.update({
+      where: { id: userId },
+      data: {
+        googleId: input.googleId,
+        authProvider: AuthProvider.BOTH,
+        ...(input.avatarUrl ? { avatarUrl: input.avatarUrl } : {}),
+      },
       include: { role: true, wallet: true },
     }),
 
@@ -42,6 +59,42 @@ export const authRepository = {
           passwordHash: input.passwordHash,
           fullName: input.fullName,
           phone: input.phone,
+          avatarUrl: input.avatarUrl,
+          roleId: memberRole.id,
+          wallet: {
+            create: {
+              balance: 0,
+            },
+          },
+        },
+        include: { role: true, wallet: true },
+      });
+    });
+  },
+
+  createGoogleMemberWithWallet: async (input: {
+    email: string;
+    passwordHash: string;
+    fullName: string;
+    googleId: string;
+    avatarUrl?: string;
+  }) => {
+    return prisma.$transaction(async (tx) => {
+      const memberRole = await tx.role.findUnique({
+        where: { name: RoleName.MEMBER },
+      });
+
+      if (!memberRole) {
+        throw new Error("MEMBER role is not configured");
+      }
+
+      return tx.user.create({
+        data: {
+          email: input.email,
+          passwordHash: input.passwordHash,
+          fullName: input.fullName,
+          googleId: input.googleId,
+          authProvider: AuthProvider.GOOGLE,
           avatarUrl: input.avatarUrl,
           roleId: memberRole.id,
           wallet: {

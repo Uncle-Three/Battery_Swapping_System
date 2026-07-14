@@ -7,6 +7,8 @@ import type {
   EmailMessage,
   MaintenanceEmailData,
   SwapCompletedEmailData,
+  WarrantyEmailData,
+  SwapSummaryReportEmailData,
 } from "./email.types";
 
 const isEmailConfigured = () => Boolean(env.MAIL_USER && env.MAIL_PASS);
@@ -50,4 +52,6 @@ export const emailService = {
   sendBatteryInspectionCompleted: (data: BatteryInspectionEmailData) => send(emailTemplates.batteryInspectionCompleted(data)),
   sendMaintenanceStatusChanged: (data: MaintenanceEmailData) => send(emailTemplates.maintenanceStatusChanged(data)),
   sendSwapCompleted: (data: SwapCompletedEmailData) => send(emailTemplates.swapCompleted(data)),
+  sendWarrantyIssued: (data: WarrantyEmailData) => send(emailTemplates.warrantyIssued(data)),
+  sendSwapSummaryReport: (data: SwapSummaryReportEmailData) => send(emailTemplates.swapSummaryReport(data)),
 };

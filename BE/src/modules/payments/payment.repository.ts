@@ -167,9 +167,41 @@ export const paymentRepository = {
       await tx.notification.create({ data: { userId: swap.userId, type: NotificationType.PAYMENT_UPDATE, title: "Đổi pin hoàn tất", message: `Thanh toán trực tiếp ${amount.toLocaleString("vi-VN")} VND qua VNPay thành công.`, entityType: "SwapTransaction", entityId: swap.id } });
       await tx.swapStepHistory.create({ data: { swapTransactionId: swap.id, actorId: swap.staffId, fromStatus: SwapStatus.PAYMENT_PENDING, toStatus: SwapStatus.COMPLETED, data: { paymentMethod: "VNPAY", amount } } });
       await tx.swapTransaction.update({ where: { id: swap.id }, data: { workflowStatus: SwapStatus.COMPLETED, completedAt: new Date(), status: "SUCCESS" } });
-      return { completed: true, bookingId: swap.booking.id };
+
+      // ── Tạo phiếu bảo hành 1 năm ──────────────────────────────────────────
+      const now = new Date();
+      const issuedAt = now;
+      const expiresAt = new Date(now);
+      expiresAt.setFullYear(expiresAt.getFullYear() + 1);
+      const datePart = now.toISOString().slice(0, 10).replace(/-/g, ""); // "20260714"
+      const warrantyNumber = `WR-${datePart}-${swap.id.slice(-5).toUpperCase()}`;
+      const warrantyCard = await tx.warrantyCard.create({
+        data: {
+          swapTransactionId: swap.id,
+          userId: swap.userId,
+          batteryId: swap.batteryOutId,
+          vehicleId: swap.vehicleId,
+          stationId: swap.stationId,
+          warrantyNumber,
+          issuedAt,
+          expiresAt,
+        },
+      });
+      await tx.notification.create({
+        data: {
+          userId: swap.userId,
+          type: NotificationType.SYSTEM,
+          title: "Phiếu bảo hành đã được cấp",
+          message: `Bảo hành pin ${warrantyNumber} có hiệu lực đến ${expiresAt.toLocaleDateString("vi-VN")}. Kiểm tra email của bạn để xem chi tiết.`,
+          entityType: "WarrantyCard",
+          entityId: warrantyCard.id,
+        },
+      });
+
+      return { completed: true, bookingId: swap.booking.id, warrantyCard };
     });
   },
+
 
   findBookingIdByPayment: async (txnRef: string) => {
     const transaction = await prisma.paymentTransaction.findFirst({

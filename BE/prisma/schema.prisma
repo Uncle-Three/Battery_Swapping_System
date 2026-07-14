@@ -916,6 +916,7 @@ model SwapTransaction {
   batteryOut     Battery?             @relation("BatteryOutTransactions", fields: [batteryOutId], references: [id], onDelete: SetNull)
   invoice        Invoice?
   inspection     BatteryInspection?
+  warrantyCard   WarrantyCard?
   stepHistory    SwapStepHistory[]
   payments       PaymentTransaction[]
   startedAt      DateTime             @default(now())
@@ -1127,4 +1128,23 @@ model VehicleBatteryHistory {
   @@index([vehicleId])
   @@index([batteryId])
   @@map("vehicle_battery_history")
+}
+
+model WarrantyCard {
+  id                String          @id @default(auto()) @map("_id") @db.ObjectId
+  swapTransactionId String          @unique @db.ObjectId
+  userId            String          @db.ObjectId
+  batteryId         String          @db.ObjectId
+  vehicleId         String          @db.ObjectId
+  stationId         String          @db.ObjectId
+  warrantyNumber    String          @unique
+  issuedAt          DateTime        @default(now())
+  expiresAt         DateTime
+  swapTransaction   SwapTransaction @relation(fields: [swapTransactionId], references: [id], onDelete: Cascade)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@index([userId])
+  @@index([batteryId])
+  @@map("warranty_cards")
 }

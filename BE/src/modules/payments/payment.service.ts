@@ -111,23 +111,67 @@ export const paymentService = {
             vehicle: { select: { name: true, plateNumber: true } },
             batteryIn: { select: { serialNumber: true } },
             batteryOut: { select: { serialNumber: true } },
+            warrantyCard: true,
+            inspection: true,
           },
         });
         if (completedSwap) {
+          const vehicleName = completedSwap.booking?.vehicle?.name ?? completedSwap.vehicle?.name;
+          const plateNumber = completedSwap.booking?.vehicle?.plateNumber ?? completedSwap.vehicle?.plateNumber;
+
+          // Email thay pin hoàn tất
           await emailService.sendSwapCompleted({
             customerName: completedSwap.user.fullName,
             customerEmail: completedSwap.user.email,
             stationName: completedSwap.station.name,
-            vehicleName: completedSwap.booking?.vehicle?.name ?? completedSwap.vehicle?.name,
-            plateNumber: completedSwap.booking?.vehicle?.plateNumber ?? completedSwap.vehicle?.plateNumber,
+            vehicleName,
+            plateNumber,
             oldBatterySerial: completedSwap.batteryIn?.serialNumber,
             newBatterySerial: completedSwap.batteryOut?.serialNumber,
             amount: txn.amount,
             completedAt: completedSwap.completedAt,
           });
+
+          // Email phiếu bảo hành 1 năm
+          if (completedSwap.warrantyCard) {
+            await emailService.sendWarrantyIssued({
+              customerName: completedSwap.user.fullName,
+              customerEmail: completedSwap.user.email,
+              warrantyNumber: completedSwap.warrantyCard.warrantyNumber,
+              issuedAt: completedSwap.warrantyCard.issuedAt,
+              expiresAt: completedSwap.warrantyCard.expiresAt,
+              newBatterySerial: completedSwap.batteryOut?.serialNumber,
+              vehicleName,
+              plateNumber,
+              stationName: completedSwap.station.name,
+            });
+          }
+
+          // Email báo cáo tổng hợp dịch vụ (Swap Summary Report)
+          await emailService.sendSwapSummaryReport({
+            customerName: completedSwap.user.fullName,
+            customerEmail: completedSwap.user.email,
+            swapId: completedSwap.id,
+            stationName: completedSwap.station.name,
+            vehicleName,
+            plateNumber,
+            oldBatterySerial: completedSwap.batteryIn?.serialNumber,
+            oldBatterySoh: completedSwap.inspection?.soh,
+            oldBatterySoc: completedSwap.batteryInSoc ?? completedSwap.inspection?.soc,
+            oldBatteryCondition: completedSwap.inspection?.physicalCondition,
+            oldBatteryOutcome: completedSwap.inspection?.outcome,
+            newBatterySerial: completedSwap.batteryOut?.serialNumber,
+            newBatterySoc: completedSwap.batteryOutSoc,
+            warrantyNumber: completedSwap.warrantyCard?.warrantyNumber,
+            warrantyExpiresAt: completedSwap.warrantyCard?.expiresAt,
+            amount: txn.amount,
+            paymentMethod: "VNPay",
+            completedAt: completedSwap.completedAt,
+          });
         }
       }
       return { RspCode: "00", Message: "Confirm Success" };
+
     } else {
       await paymentRepository.failVNPayTopup(txn.id);
       // Thông báo cho user biết thanh toán thất bại

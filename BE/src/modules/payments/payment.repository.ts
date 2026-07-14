@@ -3,6 +3,7 @@ import {
   PaymentMethod, PaymentStatus, ReplacementRequestStatus, ReservationStatus, SwapStatus,
 } from "@prisma/client";
 import { prisma } from "../../config/database";
+import { Roles } from "../../constants/roles";
 
 export const paymentRepository = {
   // ── Wallet ────────────────────────────────────────────────────────────────
@@ -176,6 +177,154 @@ export const paymentRepository = {
       select: { swapTransaction: { select: { bookingId: true } } },
     });
     return transaction?.swapTransaction?.bookingId ?? null;
+  },
+
+  // ── Notifications ─────────────────────────────────────────────────────────
+
+  /**
+   * Gửi in-app notification cho tất cả Admin và Manager của station liên quan.
+   * Được gọi sau khi VNPay IPN xác nhận thanh toán thành công.
+   */
+  notifyAdminAndManager: async (
+    swapId: string,
+    amount: number,
+    paymentMethod: string,
+    stationId: string,
+    userId: string,
+  ) => {
+    // Tìm tất cả Admin
+    const admins = await prisma.user.findMany({
+      where: { role: { name: Roles.ADMIN as any }, status: "ACTIVE" },
+      select: { id: true },
+    });
+
+    // Tìm Manager được assign cho station này
+    const managers = await prisma.stationAssignment.findMany({
+      where: { stationId, assignmentRole: "MANAGER", active: true },
+      select: { userId: true },
+    });
+
+    const recipientIds = [
+      ...admins.map((a) => a.id),
+      ...managers.map((m) => m.userId),
+    ];
+
+    // Dedup (tránh gửi 2 lần nếu Admin cũng là Manager)
+    const uniqueIds = [...new Set(recipientIds)].filter((id) => id !== userId);
+
+    if (uniqueIds.length === 0) return;
+
+    const amountFormatted = amount.toLocaleString("vi-VN");
+    await prisma.notification.createMany({
+      data: uniqueIds.map((recipientId) => ({
+        userId: recipientId,
+        type: NotificationType.PAYMENT_UPDATE,
+        title: "Báo cáo giao dịch thay pin",
+        message: `Giao dịch thay pin #${swapId.slice(-6).toUpperCase()} vừa hoàn tất. Số tiền: ${amountFormatted} VNĐ qua ${paymentMethod}.`,
+        entityType: "SwapTransaction",
+        entityId: swapId,
+      })),
+    });
+  },
+
+  // ── Payment History ────────────────────────────────────────────────────────
+
+  /** Lấy lịch sử thanh toán của 1 user (phân trang) */
+  findPaymentHistory: async (
+    userId: string,
+    filters: {
+      status?: string;
+      method?: string;
+      from?: Date;
+      to?: Date;
+      page: number;
+      limit: number;
+    },
+  ) => {
+    const where: any = { userId };
+    if (filters.status) where.status = filters.status;
+    if (filters.method) where.paymentMethod = filters.method;
+    if (filters.from || filters.to) {
+      where.createdAt = {};
+      if (filters.from) where.createdAt.gte = filters.from;
+      if (filters.to) where.createdAt.lte = filters.to;
+    }
+
+    const [items, total] = await Promise.all([
+      prisma.paymentTransaction.findMany({
+        where,
+        include: {
+          swapTransaction: {
+            select: {
+              id: true,
+              workflowStatus: true,
+              completedAt: true,
+              station: { select: { id: true, name: true, address: true } },
+              batteryOut: { select: { batteryCode: true, serialNumber: true } },
+              batteryIn: { select: { batteryCode: true, serialNumber: true } },
+              booking: { select: { id: true, scheduledStart: true, vehicleName: true } },
+            },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+        skip: (filters.page - 1) * filters.limit,
+        take: filters.limit,
+      }),
+      prisma.paymentTransaction.count({ where }),
+    ]);
+
+    return { items, total, page: filters.page, limit: filters.limit, totalPages: Math.ceil(total / filters.limit) };
+  },
+
+  /** Lấy lịch sử thanh toán toàn hệ thống (Admin) hoặc theo station (Manager) */
+  findAllPaymentHistory: async (
+    stationIds: string[] | undefined,
+    filters: {
+      status?: string;
+      method?: string;
+      from?: Date;
+      to?: Date;
+      page: number;
+      limit: number;
+    },
+  ) => {
+    const where: any = {};
+    if (filters.status) where.status = filters.status;
+    if (filters.method) where.paymentMethod = filters.method;
+    if (filters.from || filters.to) {
+      where.createdAt = {};
+      if (filters.from) where.createdAt.gte = filters.from;
+      if (filters.to) where.createdAt.lte = filters.to;
+    }
+    if (stationIds) {
+      where.swapTransaction = { stationId: { in: stationIds } };
+    }
+
+    const [items, total] = await Promise.all([
+      prisma.paymentTransaction.findMany({
+        where,
+        include: {
+          user: { select: { id: true, fullName: true, email: true, phone: true } },
+          swapTransaction: {
+            select: {
+              id: true,
+              workflowStatus: true,
+              completedAt: true,
+              station: { select: { id: true, name: true, address: true } },
+              batteryOut: { select: { batteryCode: true, serialNumber: true } },
+              batteryIn: { select: { batteryCode: true, serialNumber: true } },
+              booking: { select: { id: true, scheduledStart: true, vehicleName: true } },
+            },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+        skip: (filters.page - 1) * filters.limit,
+        take: filters.limit,
+      }),
+      prisma.paymentTransaction.count({ where }),
+    ]);
+
+    return { items, total, page: filters.page, limit: filters.limit, totalPages: Math.ceil(total / filters.limit) };
   },
 
 };

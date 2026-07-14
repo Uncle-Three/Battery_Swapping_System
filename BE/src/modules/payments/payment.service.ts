@@ -1,6 +1,7 @@
 import { paymentRepository } from "./payment.repository";
 import { createVNPayPaymentUrl, verifyVNPaySignature } from "../../common/utils/vnpay";
 import { BadRequestError } from "../../common/errors/bad-request-error";
+import { prisma } from "../../config/database";
 
 export const paymentService = {
   // ── Wallet ────────────────────────────────────────────────────────────────
@@ -84,10 +85,37 @@ export const paymentService = {
     }
 
     if (isSuccess) {
-      await paymentRepository.confirmVNPayBookingPayment(txn.id, txn.amount);
+      const result = await paymentRepository.confirmVNPayBookingPayment(txn.id, txn.amount);
+      if (result.completed) {
+        // Lấy thông tin swap để gửi report
+        const swap = await prisma.swapTransaction.findUnique({
+          where: { id: txn.swapTransactionId },
+          select: { id: true, stationId: true, userId: true },
+        });
+        if (swap) {
+          await paymentRepository.notifyAdminAndManager(
+            swap.id,
+            txn.amount,
+            "VNPay",
+            swap.stationId,
+            swap.userId,
+          );
+        }
+      }
       return { RspCode: "00", Message: "Confirm Success" };
     } else {
       await paymentRepository.failVNPayTopup(txn.id);
+      // Thông báo cho user biết thanh toán thất bại
+      await prisma.notification.create({
+        data: {
+          userId: txn.userId,
+          type: "PAYMENT_UPDATE",
+          title: "Thanh toán thất bại",
+          message: `Thanh toán ${txn.amount.toLocaleString("vi-VN")} VNĐ qua VNPay không thành công. Vui lòng thử lại.`,
+          entityType: "PaymentTransaction",
+          entityId: txn.id,
+        },
+      });
       return { RspCode: "00", Message: "Confirm Success" }; // VNPay vẫn yêu cầu "00" để xác nhận đã nhận được
     }
   },
@@ -172,5 +200,51 @@ export const paymentService = {
 
     const paymentUrl = createVNPayPaymentUrl({ amount, txnRef, orderInfo: description, ipAddr });
     return { paymentUrl, txnRef, amount };
+  },
+
+  // ── Payment History ────────────────────────────────────────────────────────
+
+  /**
+   * User xem lịch sử giao dịch của chính mình (phân trang, lọc theo status/method/date).
+   */
+  getMyPaymentHistory: async (
+    userId: string,
+    query: { status?: string; method?: string; from?: string; to?: string; page?: number; limit?: number },
+  ) => {
+    return paymentRepository.findPaymentHistory(userId, {
+      status: query.status,
+      method: query.method,
+      from: query.from ? new Date(query.from) : undefined,
+      to: query.to ? new Date(query.to) : undefined,
+      page: query.page ?? 1,
+      limit: Math.min(query.limit ?? 20, 100),
+    });
+  },
+
+  /**
+   * Admin xem tất cả, Manager chỉ xem theo station được assign.
+   */
+  getAllPaymentHistory: async (
+    userId: string,
+    role: string,
+    query: { status?: string; method?: string; from?: string; to?: string; page?: number; limit?: number },
+  ) => {
+    // Admin thấy tất cả, Manager chỉ thấy station của mình
+    let stationIds: string[] | undefined;
+    if (role !== "ADMIN") {
+      const assignments = await prisma.stationAssignment.findMany({
+        where: { userId, assignmentRole: "MANAGER", active: true },
+        select: { stationId: true },
+      });
+      stationIds = assignments.map((a) => a.stationId);
+    }
+    return paymentRepository.findAllPaymentHistory(stationIds, {
+      status: query.status,
+      method: query.method,
+      from: query.from ? new Date(query.from) : undefined,
+      to: query.to ? new Date(query.to) : undefined,
+      page: query.page ?? 1,
+      limit: Math.min(query.limit ?? 20, 100),
+    });
   },
 };

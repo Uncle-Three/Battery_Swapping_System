@@ -1,6 +1,6 @@
 import type { RequestHandler } from "express";
 import { paymentService } from "./payment.service";
-import { createVNPayTopupSchema } from "./payment.validation";
+import { createVNPayTopupSchema, paymentHistoryQuerySchema } from "./payment.validation";
 
 export const paymentController = {
   // ── Wallet ────────────────────────────────────────────────────────────────
@@ -77,6 +77,28 @@ export const paymentController = {
       req.socket.remoteAddress ||
       "127.0.0.1";
     const data = await paymentService.initiateVNPayBookingPayment(req.user!.id, bookingId, ipAddr);
+    res.status(200).json({ success: true, data });
+  }) satisfies RequestHandler,
+
+  // ── Payment History ────────────────────────────────────────────────────────
+
+  /**
+   * GET /payments/history
+   * User xem lịch sử giao dịch của chính mình.
+   */
+  getMyHistory: (async (req, res) => {
+    const query = paymentHistoryQuerySchema.parse(req.query);
+    const data = await paymentService.getMyPaymentHistory(req.user!.id, query);
+    res.status(200).json({ success: true, data });
+  }) satisfies RequestHandler,
+
+  /**
+   * GET /payments/admin/history
+   * Admin xem tất cả, Manager chỉ xem theo station của mình.
+   */
+  getAllHistory: (async (req, res) => {
+    const query = paymentHistoryQuerySchema.parse(req.query);
+    const data = await paymentService.getAllPaymentHistory(req.user!.id, req.user!.role, query);
     res.status(200).json({ success: true, data });
   }) satisfies RequestHandler,
 };

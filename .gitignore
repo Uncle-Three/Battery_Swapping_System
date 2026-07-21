@@ -1,0 +1,5 @@
+node_modules/
+dist/
+.env
+
+PROJECT_STRUCTURE_AND_GMAIL_PLAN.md

@@ -1,0 +1,38 @@
+import { Router } from "express";
+import { authRouter } from "../modules/auth/auth.route";
+import { userRouter } from "../modules/users/user.route";
+import { stationRouter } from "../modules/stations/station.route";
+import { batteryRouter } from "../modules/batteries/battery.route";
+import { batterySlotRouter } from "../modules/battery-slots/battery-slot.route";
+import { bookingRouter } from "../modules/bookings/booking.route";
+import { swapRouter } from "../modules/swaps/swap.route";
+import { maintenanceRouter } from "../modules/maintenance/maintenance.route";
+import { paymentRouter } from "../modules/payments/payment.route";
+import { reportRouter } from "../modules/reports/report.route";
+import { adminRouter } from "../modules/admin/admin.route";
+import { stationAssignmentRouter } from "../modules/station-assignments/station-assignment.route";
+import { notificationRouter } from "../modules/notifications/notification.route";
+import { replacementRequestRouter } from "../modules/replacement-requests/replacement-request.route";
+import { managerBookingRouter } from "../modules/manager-bookings/manager-booking.route";
+import { staffSwapRouter } from "../modules/staff-swaps/staff-swap.route";
+import { vehicleRouter } from "../modules/vehicles/vehicle.route";
+
+export const apiRouter = Router();
+
+apiRouter.use("/auth", authRouter);
+apiRouter.use("/users", userRouter);
+apiRouter.use("/stations", stationRouter);
+apiRouter.use("/batteries", batteryRouter);
+apiRouter.use("/battery-slots", batterySlotRouter);
+apiRouter.use("/bookings", bookingRouter);
+apiRouter.use("/swaps", swapRouter);
+apiRouter.use("/maintenance", maintenanceRouter);
+apiRouter.use("/payments", paymentRouter);
+apiRouter.use("/notifications", notificationRouter);
+apiRouter.use("/replacement-requests", replacementRequestRouter);
+apiRouter.use("/manager/bookings", managerBookingRouter);
+apiRouter.use("/staff", staffSwapRouter);
+apiRouter.use("/reports", reportRouter);
+apiRouter.use("/admin/station-assignments", stationAssignmentRouter);
+apiRouter.use("/admin", adminRouter);
+apiRouter.use("/member/vehicles", vehicleRouter);

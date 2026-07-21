@@ -226,48 +226,13 @@ const scanBattery = async (id: string, staffId: string, role: string, serialNumb
 
 const removeOldBattery = async (id: string, staffId: string, role: string, input: { serialNumber: string; soc?: number }) => {
   const swap = await getScopedSwap(id, staffId, role);
-  let assignment = swap.vehicleId ? await prisma.vehicleBatteryAssignment.findFirst({ where: { vehicleId: swap.vehicleId, active: true }, include: { battery: true } }) : null;
-
-  let batteryIdToRemove: string | null = null;
-  let currentSoc = input.soc ?? 50;
-
-  if (assignment) {
-    const isMatch =
-      assignment.battery.serialNumber === input.serialNumber ||
-      assignment.battery.batteryCode === input.serialNumber ||
-      assignment.battery.qrCodeValue === input.serialNumber ||
-      assignment.battery.id === input.serialNumber;
-
-    if (isMatch) {
-      batteryIdToRemove = assignment.batteryId;
-      currentSoc = input.soc ?? assignment.battery.soc;
-    }
-  }
-
-  if (!batteryIdToRemove) {
-    const battery = await prisma.battery.findFirst({
-      where: {
-        OR: [
-          { serialNumber: input.serialNumber },
-          { batteryCode: input.serialNumber },
-          { qrCodeValue: input.serialNumber },
-        ],
-      },
-    });
-    if (!battery) throw new AppError("Scanned battery is not installed in this vehicle", 409);
-    batteryIdToRemove = battery.id;
-    currentSoc = input.soc ?? battery.soc;
-  }
-
+  const assignment = swap.vehicleId ? await prisma.vehicleBatteryAssignment.findFirst({ where: { vehicleId: swap.vehicleId, active: true }, include: { battery: true } }) : null;
+  if (!assignment || assignment.battery.serialNumber !== input.serialNumber) throw new AppError("Scanned battery is not installed in this vehicle", 409);
   assertSwapTransition(swap.workflowStatus, SwapStatus.OLD_BATTERY_REMOVED);
-  const targetBatteryId = batteryIdToRemove;
-
   return prisma.$transaction(async (tx) => {
-    if (assignment) {
-      await tx.vehicleBatteryAssignment.update({ where: { id: assignment.id }, data: { active: false, removedAt: new Date() } });
-    }
-    await tx.battery.update({ where: { id: targetBatteryId }, data: { operationalStatus: BatteryOperationalStatus.REMOVED, currentVehicleId: null, soc: currentSoc } });
-    await tx.swapTransaction.update({ where: { id }, data: { batteryInId: targetBatteryId, batteryInSoc: currentSoc, workflowStatus: SwapStatus.OLD_BATTERY_REMOVED } });
+    await tx.vehicleBatteryAssignment.update({ where: { id: assignment.id }, data: { active: false, removedAt: new Date() } });
+    await tx.battery.update({ where: { id: assignment.batteryId }, data: { operationalStatus: BatteryOperationalStatus.REMOVED, currentVehicleId: null, soc: input.soc ?? assignment.battery.soc } });
+    await tx.swapTransaction.update({ where: { id }, data: { batteryInId: assignment.batteryId, batteryInSoc: input.soc ?? assignment.battery.soc, workflowStatus: SwapStatus.OLD_BATTERY_REMOVED } });
     await tx.swapStepHistory.create({ data: { swapTransactionId: id, actorId: staffId, fromStatus: swap.workflowStatus, toStatus: SwapStatus.OLD_BATTERY_REMOVED, data: { serialNumber: input.serialNumber } } });
     return tx.swapTransaction.findUnique({ where: { id } });
   });
@@ -275,13 +240,7 @@ const removeOldBattery = async (id: string, staffId: string, role: string, input
 
 const inspect = async (id: string, staffId: string, role: string, input: { serialNumber: string; soc: number; soh: number; temperature?: number; voltage?: number; physicalCondition: string; outcome: "AVAILABLE" | "MAINTENANCE" | "QUARANTINED" | "RETIRED"; notes?: string }) => {
   const swap = await getScopedSwap(id, staffId, role);
-  const isMatch = swap.batteryIn && (
-    swap.batteryIn.serialNumber === input.serialNumber ||
-    swap.batteryIn.batteryCode === input.serialNumber ||
-    swap.batteryIn.qrCodeValue === input.serialNumber ||
-    swap.batteryIn.id === input.serialNumber
-  );
-  if (!swap.batteryIn || !isMatch) throw new AppError("Inspection battery does not match removed battery", 409);
+  if (!swap.batteryIn || swap.batteryIn.serialNumber !== input.serialNumber) throw new AppError("Inspection battery does not match removed battery", 409);
   assertSwapTransition(swap.workflowStatus, SwapStatus.OLD_BATTERY_INSPECTED);
   const target = { AVAILABLE: BatteryOperationalStatus.AVAILABLE, MAINTENANCE: BatteryOperationalStatus.MAINTENANCE, QUARANTINED: BatteryOperationalStatus.QUARANTINED, RETIRED: BatteryOperationalStatus.RETIRED }[input.outcome];
   const soh = round(input.soh);
@@ -311,8 +270,7 @@ const inspect = async (id: string, staffId: string, role: string, input: { seria
 const assignReplacement = async (id: string, staffId: string, role: string, serialNumber: string) => {
   const swap = await getScopedSwap(id, staffId, role);
   const reserved = swap.booking?.battery;
-  const isMatch = reserved && (reserved.serialNumber === serialNumber || reserved.batteryCode === serialNumber || reserved.id === serialNumber);
-  if (!reserved || !isMatch || reserved.operationalStatus !== BatteryOperationalStatus.RESERVED || reserved.safetyState !== "SAFE") throw new AppError("Scanned battery is not the safe battery reserved for this booking", 409);
+  if (!reserved || reserved.serialNumber !== serialNumber || reserved.operationalStatus !== BatteryOperationalStatus.RESERVED || reserved.safetyState !== "SAFE") throw new AppError("Scanned battery is not the safe battery reserved for this booking", 409);
   return prisma.$transaction(async (tx) => {
     await tx.swapTransaction.update({ where: { id }, data: { batteryOutId: reserved.id, batteryOutSoc: reserved.soc } });
     return move(tx, id, staffId, swap.workflowStatus, SwapStatus.REPLACEMENT_ASSIGNED, { serialNumber });
@@ -321,8 +279,7 @@ const assignReplacement = async (id: string, staffId: string, role: string, seri
 
 const install = async (id: string, staffId: string, role: string, serialNumber: string) => {
   const swap = await getScopedSwap(id, staffId, role);
-  const isMatch = swap.batteryOut && (swap.batteryOut.serialNumber === serialNumber || swap.batteryOut.batteryCode === serialNumber || swap.batteryOut.id === serialNumber);
-  if (!swap.batteryOut || !isMatch) throw new AppError("Installed battery does not match assigned replacement", 409);
+  if (!swap.batteryOut || swap.batteryOut.serialNumber !== serialNumber) throw new AppError("Installed battery does not match assigned replacement", 409);
   if (!swap.vehicleId || !swap.batteryOutId) throw new AppError("Swap is missing vehicle or replacement battery", 409);
   return prisma.$transaction(async (tx) => {
     await tx.vehicleBatteryAssignment.updateMany({ where: { vehicleId: swap.vehicleId!, active: true }, data: { active: false, removedAt: new Date() } });
@@ -344,9 +301,10 @@ const collectPayment = async (id: string, staffId: string, role: string) => {
   if (!swap.booking || !swap.vehicleId || !swap.batteryOutId || !swap.batteryOut) throw new AppError("Swap is missing booking, vehicle or replacement battery", 409);
   assertSwapTransition(swap.workflowStatus, SwapStatus.PAYMENT_PENDING);
   const booking = swap.booking;
-  const amount = booking.costEstimate && booking.costEstimate > 0 ? booking.costEstimate : 45000;
+  const amount = booking.costEstimate ?? 0;
+  if (amount <= 0) throw new AppError("Booking has no valid cost estimate", 409);
 
-  await prisma.$transaction(async (tx) => {
+  return prisma.$transaction(async (tx) => {
     await tx.swapTransaction.update({ where: { id }, data: { workflowStatus: SwapStatus.PAYMENT_PENDING, cost: amount } });
     await tx.swapStepHistory.create({ data: { swapTransactionId: id, actorId: staffId, fromStatus: swap.workflowStatus, toStatus: SwapStatus.PAYMENT_PENDING, data: { paymentMethod: "VNPAY", amount } } });
     await tx.invoice.upsert({
@@ -355,8 +313,8 @@ const collectPayment = async (id: string, staffId: string, role: string) => {
       create: { transactionId: id, amount, paymentMethod: PaymentMethod.VNPAY, status: InvoiceStatus.UNPAID },
     });
     await tx.notification.create({ data: { userId: swap.userId, type: NotificationType.PAYMENT_UPDATE, title: "Yêu cầu thanh toán", message: `Vui lòng thanh toán trực tiếp ${amount.toLocaleString("vi-VN")} VND qua VNPay để hoàn tất thay pin.`, entityType: "Booking", entityId: swap.bookingId! } });
+    return tx.swapTransaction.findUniqueOrThrow({ where: { id }, include: { invoice: true, payments: true } });
   });
-  return getScopedSwap(id, staffId, role);
 };
 
 const rollback = async (id: string, staffId: string, role: string, reason: string) => {

@@ -8,7 +8,7 @@ const authRateLimitMessage = {
   errors: [],
 };
 
-const skipInAutomatedTests = () => env.NODE_ENV === "test" || env.NODE_ENV === "development" || process.env.E2E_TEST === "true";
+const skipInAutomatedTests = () => env.NODE_ENV === "test" || process.env.E2E_TEST === "true";
 
 export const loginRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,

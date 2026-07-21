@@ -39,8 +39,6 @@ import { AuditLogs } from './features/dashboard/pages/admin/AuditLogs';
 import { StationAssignments } from './features/dashboard/pages/admin/StationAssignments';
 import { AdminReports } from './features/dashboard/pages/admin/AdminReports';
 
-import { MockVNPayPage } from './features/customer/pages/MockVNPayPage';
-
 // New Station Module
 import { StationList } from './features/dashboard/pages/admin/stations/StationList';
 import { CreateStation } from './features/dashboard/pages/admin/stations/CreateStation';
@@ -127,7 +125,6 @@ function App() {
           <Route path="/403" element={<Unauthorized />} />
           <Route path="/404" element={<NotFound />} />
           <Route path="/payments/vnpay/return" element={<VNPayReturn />} />
-          <Route path="/payments/vnpay/mock" element={<MockVNPayPage />} />
         </Route>
 
         <Route path="/app" element={<ProtectedLayout roles={[UserRole.MEMBER]} />}>

@@ -39,7 +39,6 @@ export const errorMiddleware: ErrorRequestHandler = (error, req, res, _next) => 
     return;
   }
 
-  console.error("[Unhandled Error]:", error);
   res.status(500).json({
     success: false,
     code: "INTERNAL_SERVER_ERROR",

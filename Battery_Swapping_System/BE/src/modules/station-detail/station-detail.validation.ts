@@ -27,7 +27,7 @@ export const updateSlotSchema = slotFieldsSchema.partial()
 export const slotsQuerySchema = z.object({ from: z.coerce.date().optional(), to: z.coerce.date().optional(), view: z.enum(["day", "week"]).default("day") });
 
 export const inventoryQuerySchema = z.object({ search: z.string().optional(), status: z.string().optional(), safetyState: z.string().optional(), page: z.coerce.number().int().min(1).default(1), limit: z.coerce.number().int().min(1).max(100).default(20) });
-export const batteryParamSchema = z.object({ stationId: objectIdSchema, batteryId: z.string().trim().min(1) });
+export const batteryParamSchema = z.object({ stationId: objectIdSchema, batteryId: objectIdSchema });
 export const inventoryActionSchema = z.object({
   action: z.enum(["ADD", "TRANSFER", "INSPECTION_REQUIRED", "MAINTENANCE"]),
   targetStationId: objectIdSchema.optional(), reason: z.string().trim().min(3).max(500),

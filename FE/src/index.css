@@ -1,0 +1,35 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root { color-scheme: light; font-family: 'Manrope', ui-sans-serif, system-ui, sans-serif; }
+  :root.dark { color-scheme: dark; }
+  * { @apply border-slate-200 dark:border-slate-800; }
+  html { @apply scroll-smooth antialiased; }
+  body { @apply m-0 min-w-[320px] bg-slate-50 text-slate-950 transition-colors duration-200 dark:bg-slate-950 dark:text-slate-100; }
+  button, a, input, select, textarea { @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-950; }
+  ::selection { @apply bg-emerald-200 text-emerald-950; }
+  /* Hide number input spinners */
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  input[type="number"] { -moz-appearance: textfield; }
+}
+
+@layer components {
+  .app-panel { @apply rounded-2xl border border-slate-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,.04),0_12px_32px_rgba(15,23,42,.04)] dark:border-slate-800 dark:bg-slate-900; }
+  .app-panel-hover { @apply app-panel transition duration-200 hover:-translate-y-0.5 hover:border-emerald-200 hover:shadow-[0_16px_40px_rgba(15,23,42,.08)] dark:hover:border-emerald-900; }
+  .eyebrow { @apply text-xs font-extrabold uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-400; }
+  .page-title { @apply text-2xl font-extrabold tracking-tight text-slate-950 sm:text-3xl dark:text-white; }
+  .page-description { @apply mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400; }
+  .metric-label { @apply text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400; }
+  .metric-value { @apply mt-2 text-2xl font-extrabold tracking-tight text-slate-950 dark:text-white; }
+  .soft-grid { background-image: radial-gradient(circle at 1px 1px, rgb(148 163 184 / .14) 1px, transparent 0); background-size: 24px 24px; }
+  .scrollbar-thin { scrollbar-width: thin; scrollbar-color: rgb(148 163 184 / .45) transparent; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}

@@ -21,9 +21,25 @@ export const authController = {
     res.status(200).json({ success: true, data: stripRefreshToken(data) });
   }) satisfies RequestHandler,
 
+  googleLogin: (async (req, res) => {
+    const data = await authService.loginWithGoogle(req.body, getAuthContext(req));
+    setRefreshTokenCookie(res, data.refreshToken, data.refreshTokenExpiresAt);
+    res.status(200).json({ success: true, data: stripRefreshToken(data) });
+  }) satisfies RequestHandler,
+
   register: (async (req, res) => {
     const data = await authService.register(req.body);
     res.status(201).json({ success: true, data });
+  }) satisfies RequestHandler,
+
+  verifyEmail: (async (req, res) => {
+    const data = await authService.verifyEmail(req.body);
+    res.status(200).json({ success: true, data, message: "Email verified successfully" });
+  }) satisfies RequestHandler,
+
+  resendVerification: (async (req, res) => {
+    const data = await authService.resendVerification(req.body);
+    res.status(200).json({ success: true, data });
   }) satisfies RequestHandler,
 
   getProfile: (async (req, res) => {

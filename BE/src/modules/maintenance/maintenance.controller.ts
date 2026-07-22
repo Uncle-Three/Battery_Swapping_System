@@ -3,7 +3,7 @@ import { maintenanceService } from "./maintenance.service";
 
 export const maintenanceController = {
   create: (async (req, res) => {
-    const data = await maintenanceService.create(req.body);
+    const data = await maintenanceService.create({ ...req.body, technicianId: req.user?.id });
     res.status(201).json({ success: true, data });
   }) satisfies RequestHandler,
 
@@ -12,4 +12,3 @@ export const maintenanceController = {
     res.status(200).json({ success: true, data });
   }) satisfies RequestHandler,
 };
-

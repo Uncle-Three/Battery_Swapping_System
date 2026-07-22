@@ -5,7 +5,7 @@ import { validate } from "../../common/middleware/validate.middleware";
 import { objectIdParamsSchema } from "../../common/validation/object-id";
 import { Permissions } from "../../constants/permissions";
 import { staffSwapController } from "./staff-swap.controller";
-import { bookingLookupSchema, checkInSchema, collectPaymentSchema, inspectionSchema, rollbackSwapSchema, serialSchema } from "./staff-swap.validation";
+import { bookingLookupSchema, checkInSchema, collectPaymentSchema, inspectionSchema, rollbackSwapSchema, scanBatterySchema, serialSchema } from "./staff-swap.validation";
 
 export const staffSwapRouter = Router();
 staffSwapRouter.use(authenticate, authorizePermission(Permissions.SWAPS_PROCESS));
@@ -15,6 +15,7 @@ staffSwapRouter.post("/bookings/lookup", validate({ body: bookingLookupSchema })
 staffSwapRouter.post("/bookings/:id/check-in", validate({ params: objectIdParamsSchema, body: checkInSchema }), staffSwapController.checkIn);
 staffSwapRouter.get("/swaps/:id", validate({ params: objectIdParamsSchema }), staffSwapController.get);
 staffSwapRouter.post("/swaps/:id/verify", validate({ params: objectIdParamsSchema }), staffSwapController.verify);
+staffSwapRouter.post("/swaps/:id/scan-battery", validate({ params: objectIdParamsSchema, body: scanBatterySchema }), staffSwapController.scanBattery);
 staffSwapRouter.post("/swaps/:id/remove-battery", validate({ params: objectIdParamsSchema, body: serialSchema }), staffSwapController.remove);
 staffSwapRouter.post("/swaps/:id/inspect-old-battery", validate({ params: objectIdParamsSchema, body: inspectionSchema }), staffSwapController.inspect);
 staffSwapRouter.post("/swaps/:id/assign-replacement", validate({ params: objectIdParamsSchema, body: serialSchema }), staffSwapController.assign);

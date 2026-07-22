@@ -47,8 +47,11 @@ export function createVNPayPaymentUrl(params: CreateVNPayUrlParams): string {
   const signData = new URLSearchParams(sortedParams).toString();
   const secureHash = hmacSHA512(env.VNPAY_HASH_SECRET, signData);
 
-  const paymentUrl =
-    env.VNPAY_URL + "?" + signData + "&vnp_SecureHash=" + secureHash;
+  const baseUrl = env.VNPAY_TMN_CODE === "DEMO"
+    ? `${env.CLIENT_URL}/payments/vnpay/mock`
+    : env.VNPAY_URL;
+
+  const paymentUrl = baseUrl + "?" + signData + "&vnp_SecureHash=" + secureHash;
 
   return paymentUrl;
 }
@@ -58,6 +61,7 @@ export function createVNPayPaymentUrl(params: CreateVNPayUrlParams): string {
  * Trả về true nếu hợp lệ.
  */
 export function verifyVNPaySignature(query: Record<string, string>): boolean {
+  if (env.VNPAY_TMN_CODE === "DEMO") return true;
   const { vnp_SecureHash, ...rest } = query;
 
   if (!vnp_SecureHash) return false;

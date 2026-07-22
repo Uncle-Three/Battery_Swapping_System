@@ -11,7 +11,7 @@ TypeScript, Node.js, Express 5, Prisma ORM 6 and MongoDB REST API.
 ## Local setup (Windows PowerShell)
 
 ```powershell
-Copy-Item .env.example .env
+Mở file `.env` và điền các giá trị cấu hình cần thiết.
 cd ..
 docker compose up -d
 cd BE
@@ -23,6 +23,25 @@ npm run prisma:indexes
 npm run db:seed
 npm run dev
 ```
+
+## Gmail SMTP và xác minh email
+
+Không lưu mật khẩu Gmail trực tiếp trong mã nguồn. Tạo Gmail App Password mới, sau đó thêm vào `BE/.env` (file này đã được git ignore):
+
+```env
+APP_MAIL_ENABLED=true
+APP_MAIL_LOG_MOCK_BODY=false
+GMAIL_USERNAME="your-account@gmail.com"
+GMAIL_APP_PASSWORD="your-new-app-password"
+MAIL_HOST="smtp.gmail.com"
+MAIL_PORT=587
+MAIL_SECURE=false
+MAIL_FROM="Battery Swapping System <your-account@gmail.com>"
+EMAIL_VERIFICATION_EXPIRES_MINUTES=10
+CLIENT_URL="http://localhost:5173"
+```
+
+Backend chỉ đọc một file cấu hình duy nhất là `BE/.env`. Khi chạy test, tên database tự động nhận hậu tố `_test` và chức năng gửi email thật được tắt. Sau khi thay đổi Prisma schema, chạy `npm run prisma:push` một lần rồi khởi động lại backend. Khi khởi động, backend sẽ kiểm tra kết nối SMTP và ghi trạng thái thành công/thất bại vào log. Luồng đăng ký tạo liên kết xác minh dùng một lần, chỉ lưu bản băm của token, chuyển ngay tới màn hình `/verify-email`, chặn đăng nhập đến khi người dùng bấm liên kết trong email và hỗ trợ gửi lại liên kết với rate limit. Mỗi lần gửi lại sẽ vô hiệu hóa liên kết cũ.
 
 The local connection is `mongodb://localhost:27017/battery_swap_db?replicaSet=rs0`. For Atlas, replace `DATABASE_URL` with its `mongodb+srv://` URL. Never commit real credentials. MongoDB must run as a replica set because authentication, admin and payment flows use transactions.
 

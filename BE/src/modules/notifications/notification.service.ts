@@ -16,4 +16,12 @@ export const notificationService = {
     if (updated.count !== 1) throw new NotFoundError("Notification not found");
     return prisma.notification.findUnique({ where: { id } });
   },
+  markAllRead: async (userId: string) => {
+    const readAt = new Date();
+    const updated = await prisma.notification.updateMany({
+      where: { userId, status: NotificationStatus.UNREAD },
+      data: { status: NotificationStatus.READ, readAt },
+    });
+    return { updated: updated.count, readAt };
+  },
 };

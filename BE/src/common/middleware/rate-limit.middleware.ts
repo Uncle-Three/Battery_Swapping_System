@@ -8,7 +8,7 @@ const authRateLimitMessage = {
   errors: [],
 };
 
-const skipInAutomatedTests = () => env.NODE_ENV === "test" || process.env.E2E_TEST === "true";
+const skipInAutomatedTests = () => env.NODE_ENV === "test" || env.NODE_ENV === "development" || process.env.E2E_TEST === "true";
 
 export const loginRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -31,6 +31,15 @@ export const registerRateLimiter = rateLimit({
 export const refreshRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: authRateLimitMessage,
+  skip: skipInAutomatedTests,
+});
+
+export const emailVerificationRateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 5,
   standardHeaders: true,
   legacyHeaders: false,
   message: authRateLimitMessage,

@@ -52,15 +52,14 @@ export const Notifications: FC = () => {
   };
 
   const handleMarkAllRead = async () => {
-    const unread = items.filter((n) => n.status === 'UNREAD');
-    for (const n of unread) {
-      try {
-        await notificationService.markRead(n.id);
-      } catch {
-        // continue others
-      }
+    try {
+      const result = await notificationService.markAllRead();
+      setItems((prev) => prev.map((notification) => notification.status === 'UNREAD'
+        ? { ...notification, status: 'READ', readAt: result.readAt }
+        : notification));
+    } catch (cause) {
+      setError(getApiErrorMessage(cause));
     }
-    load();
   };
 
   const unreadCount = items.filter((n) => n.status === 'UNREAD').length;

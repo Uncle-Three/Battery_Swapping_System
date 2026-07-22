@@ -4,12 +4,38 @@ import { NotFoundError } from "../../common/errors/not-found-error";
 import { ConflictError } from "../../common/errors/conflict-error";
 import type { z } from "zod";
 import type { updateMeSchema } from "./user.validation";
+import { calculateBatterySoh, classifyBatterySoh, inferAccumulatedMileageKm } from "../battery-health/battery-soh";
 
 type UpdateMeInput = z.infer<typeof updateMeSchema>;
 type UserRepository = typeof userRepository;
 
 type UserServiceDependencies = {
   repository: Pick<UserRepository, "findById" | "findByPhone" | "updateProfile" | "findMany" | "findVehicles" | "findVehicleDetail" | "findMemberDashboard" | "isUniqueConstraintError">;
+};
+
+const withCalculatedBatteryHealth = <T>(value: T): T => {
+  const vehicles = Array.isArray(value)
+    ? value
+    : (value as any)?.vehicles
+      ? (value as any).vehicles
+      : value
+        ? [value]
+        : [];
+
+  for (const vehicle of vehicles as any[]) {
+    for (const assignment of vehicle.batteryAssignments ?? []) {
+      const battery = assignment.battery;
+      if (!battery) continue;
+      const soh = calculateBatterySoh(
+        inferAccumulatedMileageKm(battery.accumulatedMileageKm, battery.soh),
+      );
+      battery.soh = soh;
+      battery.estimatedSoH = soh;
+      battery.healthClassification = classifyBatterySoh(soh);
+    }
+  }
+
+  return value;
 };
 
 export const createUserService = (dependencies: UserServiceDependencies) => ({
@@ -60,16 +86,17 @@ export const createUserService = (dependencies: UserServiceDependencies) => ({
     return users.map(userMapper.toResponse);
   },
 
-  getVehicles: (userId: string) => dependencies.repository.findVehicles(userId),
+  getVehicles: async (userId: string) =>
+    withCalculatedBatteryHealth(await dependencies.repository.findVehicles(userId)),
   getVehicleDetail: async (userId: string, id: string) => {
     const vehicle = await dependencies.repository.findVehicleDetail(userId, id);
     if (!vehicle) throw new NotFoundError("Vehicle not found");
-    return vehicle;
+    return withCalculatedBatteryHealth(vehicle);
   },
   getDashboard: async (userId: string) => {
     const dashboard = await dependencies.repository.findMemberDashboard(userId);
     if (!dashboard) throw new NotFoundError("User not found");
-    return dashboard;
+    return withCalculatedBatteryHealth(dashboard);
   },
 });
 

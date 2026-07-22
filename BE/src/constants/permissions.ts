@@ -36,6 +36,15 @@ export const Permissions = {
   SAFETY_RULES_MANAGE: "safety-rules:manage",
   COMPATIBILITY_MANAGE: "compatibility:manage",
   BOOKINGS_APPROVE: "bookings:approve",
+  // Vehicle Ownership Transfer
+  VEHICLES_LOOKUP: "vehicles:lookup",
+  VEHICLES_TRANSFER_CREATE: "vehicles:transfer:create",
+  VEHICLES_TRANSFER_READ_SELF: "vehicles:transfer:read:self",
+  VEHICLES_TRANSFER_ADMIN: "vehicles:transfer:admin",
+  VEHICLES_OWNERSHIP_HISTORY_READ: "vehicles:ownership-history:read",
+  VEHICLES_TECHNICAL_HISTORY_READ: "vehicles:technical-history:read",
+  // Account Recovery
+  ACCOUNT_RECOVERY_MANAGE: "account-recovery:manage",
 } as const;
 
 export type Permission = (typeof Permissions)[keyof typeof Permissions];
@@ -46,6 +55,11 @@ export const RolePermissions = {
     Permissions.PROFILE_READ_SELF,
     Permissions.PROFILE_UPDATE_SELF,
     Permissions.VEHICLES_MANAGE_SELF,
+    Permissions.VEHICLES_LOOKUP,
+    Permissions.VEHICLES_TRANSFER_CREATE,
+    Permissions.VEHICLES_TRANSFER_READ_SELF,
+    Permissions.VEHICLES_OWNERSHIP_HISTORY_READ,
+    Permissions.VEHICLES_TECHNICAL_HISTORY_READ,
     Permissions.BOOKINGS_CREATE,
     Permissions.BOOKINGS_READ_SELF,
     Permissions.BOOKINGS_CANCEL_SELF,

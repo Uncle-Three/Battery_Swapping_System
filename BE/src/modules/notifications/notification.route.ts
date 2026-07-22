@@ -9,4 +9,5 @@ import { notificationController } from "./notification.controller";
 export const notificationRouter = Router();
 notificationRouter.use(authenticate, authorizePermission(Permissions.NOTIFICATIONS_READ_SELF));
 notificationRouter.get("/", notificationController.listMine);
+notificationRouter.patch("/read-all", notificationController.markAllRead);
 notificationRouter.patch("/:id/read", validate({ params: objectIdParamsSchema }), notificationController.markRead);

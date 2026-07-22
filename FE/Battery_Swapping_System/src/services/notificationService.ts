@@ -7,4 +7,6 @@ export const notificationService = {
     unwrapData<Notification[]>(await apiClient.get(API_ENDPOINTS.NOTIFICATIONS.LIST)),
   markRead: async (id: string) =>
     unwrapData<Notification>(await apiClient.patch(API_ENDPOINTS.NOTIFICATIONS.MARK_READ(id))),
+  markAllRead: async () =>
+    unwrapData<{ updated: number; readAt: string }>(await apiClient.patch(API_ENDPOINTS.NOTIFICATIONS.MARK_ALL_READ)),
 };

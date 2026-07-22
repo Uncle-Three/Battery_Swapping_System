@@ -32,6 +32,12 @@ export const authService = {
     return { ...data, user: mapUserDto(data.user) };
   },
 
+  googleLogin: async (idToken: string): Promise<AuthResponse> => {
+    const response = await apiClient.post(API_ENDPOINTS.AUTH.GOOGLE, { idToken });
+    const data = unwrapData<AuthResponse>(response);
+    return { ...data, user: mapUserDto(data.user) };
+  },
+
   restoreSession: async (): Promise<AuthResponse> => {
     if (!restoreSessionPromise) {
       restoreSessionPromise = apiClient
@@ -48,10 +54,20 @@ export const authService = {
     return restoreSessionPromise;
   },
 
-  register: async (data: RegisterInput): Promise<{ user: User }> => {
+  register: async (data: RegisterInput): Promise<{ user: User; requiresEmailVerification: boolean; emailSent: boolean }> => {
     const response = await apiClient.post(API_ENDPOINTS.AUTH.REGISTER, sanitizeRegisterInput(data));
+    const result = unwrapData<{ user: User; requiresEmailVerification: boolean; emailSent: boolean }>(response);
+    return { ...result, user: mapUserDto(result.user) };
+  },
+
+  verifyEmail: async (token: string): Promise<{ user: User }> => {
+    const response = await apiClient.post(API_ENDPOINTS.AUTH.VERIFY_EMAIL, { token });
     const result = unwrapData<{ user: User }>(response);
     return { user: mapUserDto(result.user) };
+  },
+
+  resendVerification: async (email: string): Promise<void> => {
+    await apiClient.post(API_ENDPOINTS.AUTH.RESEND_VERIFICATION, { email });
   },
 
   getProfile: async (): Promise<Profile> => {

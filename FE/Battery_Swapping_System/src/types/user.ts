@@ -3,6 +3,7 @@ import { UserRole } from '../constants/roles';
 export interface User {
   id: string;
   email: string;
+  emailVerified?: boolean;
   name: string;
   role: UserRole;
   phoneNumber?: string | null;
@@ -17,6 +18,7 @@ export interface User {
 export interface Profile {
   id: string;
   email: string;
+  emailVerified?: boolean;
   name: string;
   role: UserRole;
   phoneNumber?: string | null;

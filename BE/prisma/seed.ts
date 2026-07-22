@@ -1,3 +1,4 @@
+import "dotenv/config";
 import {
   PrismaClient,
   RoleName,
@@ -13,6 +14,8 @@ import {
 } from "@prisma/client";
 import bcrypt from "bcrypt";
 import { Permissions, PermissionWildcard, RolePermissions } from "../src/constants/permissions";
+import "dotenv/config";
+
 
 const prisma = new PrismaClient();
 
@@ -20,14 +23,45 @@ if (process.env.NODE_ENV === "production") {
   throw new Error("Development seed is disabled in production");
 }
 
+type MongoIndexInfo = {
+  name?: string;
+  key?: Record<string, number>;
+  unique?: boolean;
+  sparse?: boolean;
+};
+
+const ensureSparseUniqueGoogleIdIndex = async () => {
+  const indexesResult = await prisma.$runCommandRaw({ listIndexes: "users" }) as {
+    cursor?: { firstBatch?: MongoIndexInfo[] };
+  };
+  const indexes = indexesResult.cursor?.firstBatch ?? [];
+  const googleIdIndex = indexes.find((index) => index.name === "users_googleId_key");
+  const isSparseUniqueGoogleIdIndex = Boolean(
+    googleIdIndex
+    && googleIdIndex.unique
+    && googleIdIndex.sparse
+    && googleIdIndex.key
+    && googleIdIndex.key.googleId === 1,
+  );
+
+  if (isSparseUniqueGoogleIdIndex) return;
+  if (googleIdIndex) await prisma.$runCommandRaw({ dropIndexes: "users", index: "users_googleId_key" });
+  await prisma.$runCommandRaw({
+    createIndexes: "users",
+    indexes: [{ key: { googleId: 1 }, name: "users_googleId_key", unique: true, sparse: true }],
+  });
+};
+
 const main = async () => {
   const passwordHash = await bcrypt.hash("123456", 12);
+  await ensureSparseUniqueGoogleIdIndex();
 
   await prisma.auditLog.deleteMany();
   await prisma.swapStepHistory.deleteMany();
   await prisma.batteryInspection.deleteMany();
   await prisma.bookingApprovalHistory.deleteMany();
   await prisma.notification.deleteMany();
+  await prisma.emailVerificationToken.deleteMany();
   await prisma.batteryLifecycleEvent.deleteMany();
   await prisma.replacementRequest.deleteMany();
   await prisma.slotReservation.deleteMany();
@@ -124,6 +158,7 @@ const main = async () => {
       email: "admin@batteryswap.local",
       phone: "0900000001",
       passwordHash,
+      emailVerifiedAt: new Date(),
       roleId: roleByName.get(RoleName.ADMIN)!.id,
     },
   });
@@ -136,6 +171,7 @@ const main = async () => {
       rfidCard: "RFID-9921",
       licensePlate: "51K-12345",
       passwordHash,
+      emailVerifiedAt: new Date(),
       roleId: roleByName.get(RoleName.MEMBER)!.id,
       wallet: {
         create: { balance: 250000 },
@@ -175,6 +211,7 @@ const main = async () => {
         email: "staff@batteryswap.local",
         phone: "0900000003",
         passwordHash,
+        emailVerifiedAt: new Date(),
         roleId: roleByName.get(RoleName.STAFF)!.id,
       },
       {
@@ -182,6 +219,7 @@ const main = async () => {
         email: "technician@batteryswap.local",
         phone: "0900000004",
         passwordHash,
+        emailVerifiedAt: new Date(),
         roleId: roleByName.get(RoleName.TECHNICIAN)!.id,
       },
       {
@@ -189,6 +227,7 @@ const main = async () => {
         email: "manager@batteryswap.local",
         phone: "0900000005",
         passwordHash,
+        emailVerifiedAt: new Date(),
         roleId: roleByName.get(RoleName.MANAGER)!.id,
       },
     ],

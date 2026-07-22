@@ -1,6 +1,8 @@
 import { paymentRepository } from "./payment.repository";
 import { createVNPayPaymentUrl, verifyVNPaySignature } from "../../common/utils/vnpay";
 import { BadRequestError } from "../../common/errors/bad-request-error";
+import { prisma } from "../../config/database";
+import { emailService } from "../email/email.service";
 
 export const paymentService = {
   // ── Wallet ────────────────────────────────────────────────────────────────
@@ -84,10 +86,104 @@ export const paymentService = {
     }
 
     if (isSuccess) {
-      await paymentRepository.confirmVNPayBookingPayment(txn.id, txn.amount);
+      const result = await paymentRepository.confirmVNPayBookingPayment(txn.id, txn.amount);
+      if (result.completed) {
+        // Lấy thông tin swap để gửi report
+        const swap = await prisma.swapTransaction.findUnique({
+          where: { id: txn.swapTransactionId },
+          select: { id: true, stationId: true, userId: true },
+        });
+        if (swap) {
+          await paymentRepository.notifyAdminAndManager(
+            swap.id,
+            txn.amount,
+            "VNPay",
+            swap.stationId,
+            swap.userId,
+          );
+        }
+        const completedSwap = await prisma.swapTransaction.findUnique({
+          where: { id: txn.swapTransactionId },
+          include: {
+            user: { select: { fullName: true, email: true } },
+            station: { select: { name: true } },
+            booking: { include: { vehicle: { select: { name: true, plateNumber: true } } } },
+            vehicle: { select: { name: true, plateNumber: true } },
+            batteryIn: { select: { serialNumber: true } },
+            batteryOut: { select: { serialNumber: true } },
+            warrantyCard: true,
+            inspection: true,
+          },
+        });
+        if (completedSwap) {
+          const vehicleName = completedSwap.booking?.vehicle?.name ?? completedSwap.vehicle?.name;
+          const plateNumber = completedSwap.booking?.vehicle?.plateNumber ?? completedSwap.vehicle?.plateNumber;
+
+          // Email phiếu bảo hành 1 năm
+          if (completedSwap.warrantyCard) {
+            await emailService.sendWarrantyIssued({
+              customerName: completedSwap.user.fullName,
+              customerEmail: completedSwap.user.email,
+              warrantyNumber: completedSwap.warrantyCard.warrantyNumber,
+              issuedAt: completedSwap.warrantyCard.issuedAt,
+              expiresAt: completedSwap.warrantyCard.expiresAt,
+              newBatterySerial: completedSwap.batteryOut?.serialNumber,
+              vehicleName,
+              plateNumber,
+              stationName: completedSwap.station.name,
+            });
+          }
+
+          // Email báo cáo tổng hợp dịch vụ (Swap Summary Report)
+          await emailService.sendSwapSummaryReport({
+            customerName: completedSwap.user.fullName,
+            customerEmail: completedSwap.user.email,
+            swapId: completedSwap.id,
+            stationName: completedSwap.station.name,
+            vehicleName,
+            plateNumber,
+            oldBatterySerial: completedSwap.batteryIn?.serialNumber,
+            oldBatterySoh: completedSwap.inspection?.soh,
+            oldBatterySoc: completedSwap.batteryInSoc ?? completedSwap.inspection?.soc,
+            oldBatteryCondition: completedSwap.inspection?.physicalCondition,
+            oldBatteryOutcome: completedSwap.inspection?.outcome,
+            newBatterySerial: completedSwap.batteryOut?.serialNumber,
+            newBatterySoc: completedSwap.batteryOutSoc,
+            warrantyNumber: completedSwap.warrantyCard?.warrantyNumber,
+            warrantyExpiresAt: completedSwap.warrantyCard?.expiresAt,
+            amount: txn.amount,
+            paymentMethod: "VNPay",
+            completedAt: completedSwap.completedAt,
+          });
+        }
+      }
       return { RspCode: "00", Message: "Confirm Success" };
+
     } else {
       await paymentRepository.failVNPayTopup(txn.id);
+      // Thông báo cho user biết thanh toán thất bại
+      await prisma.notification.create({
+        data: {
+          userId: txn.userId,
+          type: "PAYMENT_UPDATE",
+          title: "Thanh toán thất bại",
+          message: `Thanh toán ${txn.amount.toLocaleString("vi-VN")} VNĐ qua VNPay không thành công. Vui lòng thử lại.`,
+          entityType: "PaymentTransaction",
+          entityId: txn.id,
+        },
+      });
+      const customer = await prisma.user.findUnique({
+        where: { id: txn.userId },
+        select: { fullName: true, email: true },
+      });
+      if (customer) {
+        await emailService.sendPaymentFailed({
+          customerName: customer.fullName,
+          customerEmail: customer.email,
+          amount: txn.amount,
+          reason: "Giao dịch VNPay không thành công. Vui lòng thử lại.",
+        });
+      }
       return { RspCode: "00", Message: "Confirm Success" }; // VNPay vẫn yêu cầu "00" để xác nhận đã nhận được
     }
   },
@@ -172,5 +268,51 @@ export const paymentService = {
 
     const paymentUrl = createVNPayPaymentUrl({ amount, txnRef, orderInfo: description, ipAddr });
     return { paymentUrl, txnRef, amount };
+  },
+
+  // ── Payment History ────────────────────────────────────────────────────────
+
+  /**
+   * User xem lịch sử giao dịch của chính mình (phân trang, lọc theo status/method/date).
+   */
+  getMyPaymentHistory: async (
+    userId: string,
+    query: { status?: string; method?: string; from?: string; to?: string; page?: number; limit?: number },
+  ) => {
+    return paymentRepository.findPaymentHistory(userId, {
+      status: query.status,
+      method: query.method,
+      from: query.from ? new Date(query.from) : undefined,
+      to: query.to ? new Date(query.to) : undefined,
+      page: query.page ?? 1,
+      limit: Math.min(query.limit ?? 20, 100),
+    });
+  },
+
+  /**
+   * Admin xem tất cả, Manager chỉ xem theo station được assign.
+   */
+  getAllPaymentHistory: async (
+    userId: string,
+    role: string,
+    query: { status?: string; method?: string; from?: string; to?: string; page?: number; limit?: number },
+  ) => {
+    // Admin thấy tất cả, Manager chỉ thấy station của mình
+    let stationIds: string[] | undefined;
+    if (role !== "ADMIN") {
+      const assignments = await prisma.stationAssignment.findMany({
+        where: { userId, assignmentRole: "MANAGER", active: true },
+        select: { stationId: true },
+      });
+      stationIds = assignments.map((a) => a.stationId);
+    }
+    return paymentRepository.findAllPaymentHistory(stationIds, {
+      status: query.status,
+      method: query.method,
+      from: query.from ? new Date(query.from) : undefined,
+      to: query.to ? new Date(query.to) : undefined,
+      page: query.page ?? 1,
+      limit: Math.min(query.limit ?? 20, 100),
+    });
   },
 };

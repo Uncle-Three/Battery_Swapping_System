@@ -1,7 +1,10 @@
 export const API_ENDPOINTS = {
   AUTH: {
     LOGIN: '/auth/login',
+    GOOGLE: '/auth/google',
     REGISTER: '/auth/register',
+    VERIFY_EMAIL: '/auth/verify-email',
+    RESEND_VERIFICATION: '/auth/resend-verification',
     REFRESH: '/auth/refresh',
     LOGOUT: '/auth/logout',
   },
@@ -44,6 +47,7 @@ export const API_ENDPOINTS = {
     CHECK_IN: (id: string) => `/staff/bookings/${id}/check-in`,
     DETAILS: (id: string) => `/staff/swaps/${id}`,
     VERIFY: (id: string) => `/staff/swaps/${id}/verify`,
+    SCAN_BATTERY: (id: string) => `/staff/swaps/${id}/scan-battery`,
     REMOVE: (id: string) => `/staff/swaps/${id}/remove-battery`,
     INSPECT: (id: string) => `/staff/swaps/${id}/inspect-old-battery`,
     ASSIGN: (id: string) => `/staff/swaps/${id}/assign-replacement`,
@@ -66,6 +70,7 @@ export const API_ENDPOINTS = {
   },
   NOTIFICATIONS: {
     LIST: '/notifications',
+    MARK_ALL_READ: '/notifications/read-all',
     MARK_READ: (id: string) => `/notifications/${id}/read`,
   },
   REPORTS: {

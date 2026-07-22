@@ -22,7 +22,13 @@ const loadDashboard = () => {
 };
 
 export const memberService = {
-  dashboard: loadDashboard,
+  dashboard: (forceRefresh = false) => {
+    if (forceRefresh) {
+      dashboardCache = null;
+      dashboardRequest = null;
+    }
+    return loadDashboard();
+  },
   clearDashboardCache: () => { dashboardCache = null; dashboardRequest = null; },
   vehicles: async () => unwrapData<VehicleView[]>(await apiClient.get(API_ENDPOINTS.USERS.VEHICLES)),
   vehicle: async (id: string) => unwrapData<VehicleView>(await apiClient.get(API_ENDPOINTS.USERS.VEHICLE(id))),

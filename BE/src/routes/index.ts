@@ -16,10 +16,21 @@ import { replacementRequestRouter } from "../modules/replacement-requests/replac
 import { managerBookingRouter } from "../modules/manager-bookings/manager-booking.route";
 import { staffSwapRouter } from "../modules/staff-swaps/staff-swap.route";
 import { vehicleRouter } from "../modules/vehicles/vehicle.route";
+// New feature imports
+import {
+  vehicleLookupRouter,
+  vehicleTransferRouter,
+  adminVehicleTransferRouter,
+} from "../modules/vehicle-transfer/vehicle-transfer.route";
+import { technicalHistoryRouter } from "../modules/technical-history/technical-history.route";
+import { authRecoveryRouter, accountManagementRouter, adminRecoveryRouter } from "../modules/account-recovery/account-recovery.route";
 
 export const apiRouter = Router();
 
 apiRouter.use("/auth", authRouter);
+// Account recovery routes extend /auth namespace
+apiRouter.use("/auth", authRecoveryRouter);
+apiRouter.use("/account", accountManagementRouter);
 apiRouter.use("/users", userRouter);
 apiRouter.use("/stations", stationRouter);
 apiRouter.use("/batteries", batteryRouter);
@@ -36,3 +47,9 @@ apiRouter.use("/reports", reportRouter);
 apiRouter.use("/admin/station-assignments", stationAssignmentRouter);
 apiRouter.use("/admin", adminRouter);
 apiRouter.use("/member/vehicles", vehicleRouter);
+// Vehicle ownership transfer routes
+apiRouter.use("/vehicles", vehicleLookupRouter);
+apiRouter.use("/vehicle-transfer-requests", vehicleTransferRouter);
+apiRouter.use("/admin/vehicle-transfer-requests", adminVehicleTransferRouter);
+apiRouter.use("/admin/account-recovery-requests", adminRecoveryRouter);
+apiRouter.use("/vehicles/:vehicleId/technical-history", technicalHistoryRouter);

@@ -27,6 +27,10 @@ const apiMessageTranslations: Array<[RegExp, string]> = [
   [/^Booking is missing (a )?vehicle.*$/i, 'Lịch thay pin chưa có thông tin xe.'],
   [/^Booking is missing (a )?scheduled time.*$/i, 'Lịch thay pin chưa có thời gian hẹn.'],
   [/^Scanned battery.*not.*reserved.*$/i, 'Pin vừa quét không phải pin được giữ cho lịch này.'],
+  [/^Email already exists\.?$/i, 'Email này đã được đăng ký.'],
+  [/^Phone already exists\.?$/i, 'Số điện thoại này đã được đăng ký.'],
+  [/^(User already exists|A unique value already exists)\.?$/i, 'Email hoặc số điện thoại đã được đăng ký.'],
+  [/^Email verification link is invalid or expired\.?$/i, 'Liên kết xác minh không hợp lệ hoặc đã hết hạn.'],
   [/^Unauthorized\.?$/i, 'Bạn chưa đăng nhập hoặc phiên đăng nhập đã hết hạn.'],
   [/^Forbidden\.?$/i, 'Bạn không có quyền thực hiện thao tác này.'],
   [/^Internal server error\.?$/i, 'Máy chủ gặp lỗi. Vui lòng thử lại sau.'],
@@ -66,7 +70,7 @@ type RetriableRequestConfig = InternalAxiosRequestConfig & {
 
 let refreshPromise: Promise<string> | null = null;
 
-const publicAuthPaths = [API_ENDPOINTS.AUTH.LOGIN, API_ENDPOINTS.AUTH.REGISTER, API_ENDPOINTS.AUTH.REFRESH];
+const publicAuthPaths = [API_ENDPOINTS.AUTH.LOGIN, API_ENDPOINTS.AUTH.GOOGLE, API_ENDPOINTS.AUTH.REGISTER, API_ENDPOINTS.AUTH.VERIFY_EMAIL, API_ENDPOINTS.AUTH.RESEND_VERIFICATION, API_ENDPOINTS.AUTH.REFRESH];
 
 const clearAuthAndRedirect = () => {
   useAuthStore.getState().logout();

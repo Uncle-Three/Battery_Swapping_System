@@ -238,11 +238,7 @@ export function AddVehicleDialog({ onClose, onSuccess }: AddVehicleDialogProps) 
       await vehicleService.createVehicle(data);
       onSuccess();
     } catch (err: any) {
-      if (err.code === 'RESOURCE_CONFLICT' || err.message?.includes('unique value')) {
-        setError("Biển số xe hoặc số khung (VIN) đã tồn tại trong hệ thống.");
-      } else {
-        setError(err.message || "Thêm xe thất bại");
-      }
+      setError(err.message || "Thêm xe thất bại");
     }
   };
 
@@ -370,33 +366,33 @@ export function AddVehicleDialog({ onClose, onSuccess }: AddVehicleDialogProps) 
               {errors.currentMileageKm && <p className="text-red-500 text-xs mt-1">{errors.currentMileageKm.message}</p>}
             </div>
 
-            <div className="md:col-span-2 p-4 border rounded-xl dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
-              <label className="block text-sm font-semibold mb-2">Mã QR Pin *</label>
-              <p className="text-xs text-slate-500 mb-3">Vui lòng tải lên ảnh chụp mã QR của pin, hệ thống sẽ tự động quét lấy mã.</p>
+            <div className="p-3 border rounded-xl dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 self-start">
+              <label className="block text-sm font-semibold mb-1">Mã QR Pin *</label>
+              <p className="text-xs text-slate-500 mb-2">Tải ảnh QR để hệ thống tự động quét mã.</p>
               
-              <div className="flex flex-col md:flex-row gap-4 items-start md:items-center">
-                <div className="relative">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="relative shrink-0">
                   <input
                     type="file"
                     accept="image/*"
                     onChange={handleQrUpload}
                     className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                   />
-                  <div className="flex items-center gap-2 px-4 py-2 bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300 rounded-xl font-medium hover:bg-blue-200 transition">
+                  <div className="flex items-center gap-2 px-3 py-2 bg-blue-100 text-sm text-blue-700 dark:bg-blue-900/50 dark:text-blue-300 rounded-xl font-medium hover:bg-blue-200 transition">
                     {isScanning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
                     {isScanning ? "Đang quét..." : "Tải ảnh QR lên"}
                   </div>
                 </div>
                 
-                <div className="flex-1 w-full">
+                <div className="min-w-0 flex-1">
                   {qrCodeValue ? (
-                    <div className="flex items-center gap-2 text-green-600 font-medium px-4 py-2 border border-green-200 bg-green-50 rounded-xl dark:bg-green-900/20 dark:border-green-800">
-                       <CheckCircle2 className="w-5 h-5" />
-                       Đã tải ảnh và quét mã thành công
+                    <div className="flex items-center gap-2 text-green-600 text-xs font-medium px-3 py-2 border border-green-200 bg-green-50 rounded-xl dark:bg-green-900/20 dark:border-green-800">
+                       <CheckCircle2 className="w-4 h-4 shrink-0" />
+                       Đã quét mã thành công
                     </div>
                   ) : (
-                    <div className="flex items-center gap-2 text-slate-400 italic text-sm px-4 py-2">
-                      Chưa có ảnh nào được tải lên
+                    <div className="text-slate-400 italic text-xs py-1 whitespace-nowrap">
+                      Chưa tải ảnh
                     </div>
                   )}
                   <input type="hidden" {...register("qrCodeValue")} />

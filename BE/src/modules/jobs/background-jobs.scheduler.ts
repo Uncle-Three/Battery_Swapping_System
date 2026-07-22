@@ -33,14 +33,25 @@ export const cleanupStaleReservations = async (now = new Date()): Promise<number
   return slots.count + batteries.length;
 };
 
+export const cleanupExpiredEmailVerificationTokens = async (now = new Date()): Promise<number> => {
+  const deleted = await prisma.emailVerificationToken.deleteMany({ where: { expiresAt: { lte: now } } });
+  return deleted.count;
+};
+
 export const runBackgroundJobs = async (now = new Date()): Promise<JobRunSummary[]> => {
   const startedAt = new Date();
-  const [expiredBookings, reminders, staleReservations] = await Promise.all([expireBookings(now), notifyOverdueMandatoryReplacements(now), cleanupStaleReservations(now)]);
+  const [expiredBookings, reminders, staleReservations, expiredEmailTokens] = await Promise.all([
+    expireBookings(now),
+    notifyOverdueMandatoryReplacements(now),
+    cleanupStaleReservations(now),
+    cleanupExpiredEmailVerificationTokens(now),
+  ]);
   const finishedAt = new Date();
   const summaries = [
     { job: "booking-expiration", processed: expiredBookings, startedAt, finishedAt },
     { job: "mandatory-replacement-reminder", processed: reminders, startedAt, finishedAt },
     { job: "stale-reservation-cleanup", processed: staleReservations, startedAt, finishedAt },
+    { job: "email-verification-token-cleanup", processed: expiredEmailTokens, startedAt, finishedAt },
   ];
   console.info("Background jobs completed", summaries.map(({ job, processed }) => ({ job, processed })));
   return summaries;

@@ -26,7 +26,7 @@ export const BatteryHealth = () => {
     setLoading(true);
     setError('');
     try {
-      const data = await memberService.dashboard();
+      const data = await memberService.dashboard(true);
       setVehicles(data.vehicles);
     } catch (err: any) {
       setError(getApiErrorMessage(err));

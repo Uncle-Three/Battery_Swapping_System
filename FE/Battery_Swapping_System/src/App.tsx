@@ -12,6 +12,7 @@ import { History } from './features/customer/pages/History';
 import { Login } from './features/customer/pages/Login';
 import { Unauthorized } from './features/customer/pages/Unauthorized';
 import { Register } from './features/customer/pages/Register';
+import { VerifyEmail } from './features/customer/pages/VerifyEmail';
 import { NotFound } from './features/customer/pages/NotFound';
 import { MemberDashboard } from './features/customer/pages/MemberDashboard';
 import { Vehicles } from './features/customer/pages/Vehicles';
@@ -39,6 +40,17 @@ import { AuditLogs } from './features/dashboard/pages/admin/AuditLogs';
 import { StationAssignments } from './features/dashboard/pages/admin/StationAssignments';
 import { AdminReports } from './features/dashboard/pages/admin/AdminReports';
 
+import { MockVNPayPage } from './features/customer/pages/MockVNPayPage';
+import AddVehicle from './features/customer/pages/AddVehicle';
+import AccountRecovery from './features/customer/pages/AccountRecovery';
+import ResetPassword from './features/customer/pages/ResetPassword';
+import VehicleTransferNew from './features/customer/pages/VehicleTransferNew';
+import VehicleTransferList from './features/customer/pages/VehicleTransferList';
+import VehicleTransferDetail from './features/customer/pages/VehicleTransferDetail';
+import VehicleTechnicalHistory from './features/customer/pages/VehicleTechnicalHistory';
+import VehicleTransferManagement from './features/dashboard/pages/admin/VehicleTransferManagement';
+import VehicleTransferReview from './features/dashboard/pages/admin/VehicleTransferReview';
+
 // New Station Module
 import { StationList } from './features/dashboard/pages/admin/stations/StationList';
 import { CreateStation } from './features/dashboard/pages/admin/stations/CreateStation';
@@ -61,6 +73,13 @@ const AuthBootstrap = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     let active = true;
+
+    if (!hasCachedSession) {
+      setReady(true);
+      return () => {
+        active = false;
+      };
+    }
 
     authService.restoreSession()
       .then((session) => {
@@ -122,16 +141,25 @@ function App() {
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
           <Route path="/register" element={<PublicRoute><Register /></PublicRoute>} />
+          <Route path="/verify-email" element={<PublicRoute><VerifyEmail /></PublicRoute>} />
+          <Route path="/account-recovery" element={<AccountRecovery />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/403" element={<Unauthorized />} />
           <Route path="/404" element={<NotFound />} />
           <Route path="/payments/vnpay/return" element={<VNPayReturn />} />
+          <Route path="/payments/vnpay/mock" element={<MockVNPayPage />} />
         </Route>
 
         <Route path="/app" element={<ProtectedLayout roles={[UserRole.MEMBER]} />}>
           <Route index element={<Navigate to="dashboard" replace />} />
           <Route path="dashboard" element={<MemberDashboard />} />
           <Route path="vehicles" element={<Vehicles />} />
+          <Route path="vehicles/add" element={<AddVehicle />} />
           <Route path="vehicles/:vehicleId" element={<VehicleDetail />} />
+          <Route path="vehicles/:id/history" element={<VehicleTechnicalHistory />} />
+          <Route path="vehicle-transfer" element={<VehicleTransferList />} />
+          <Route path="vehicle-transfer/new" element={<VehicleTransferNew />} />
+          <Route path="vehicle-transfer/:id" element={<VehicleTransferDetail />} />
           <Route path="battery-health" element={<Navigate to="current" replace />} />
           <Route path="battery-health/current" element={<BatteryHealth />} />
           <Route path="battery-health/history" element={<BatteryHealthHistory />} />
@@ -190,6 +218,8 @@ function App() {
           </Route>
 
           <Route path="station-assignments" element={<StationAssignments />} />
+          <Route path="vehicle-transfers" element={<VehicleTransferManagement />} />
+          <Route path="vehicle-transfers/:id" element={<VehicleTransferReview />} />
           <Route path="system-settings" element={<SystemConfig />} />
           <Route path="audit-logs" element={<AuditLogs />} />
           <Route path="reports" element={<AdminReports />} />

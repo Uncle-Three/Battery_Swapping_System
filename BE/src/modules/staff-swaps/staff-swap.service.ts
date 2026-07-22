@@ -6,6 +6,8 @@ import { NotFoundError } from "../../common/errors/not-found-error";
 import { AppError } from "../../common/errors/app-error";
 import { assertBookingTransition, assertSwapTransition } from "../../common/state-machines/transitions";
 import { calculateBatterySoh, classifyBatterySoh, inferAccumulatedMileageKm } from "../battery-health/battery-soh";
+import { emailService } from "../email/email.service";
+import { env } from "../../config/env";
 
 const assertStaffScope = async (staffId: string, role: string, stationId: string) => {
   if (role === Roles.ADMIN) return;
@@ -26,6 +28,30 @@ const nextActions: Record<SwapStatus, string[]> = {
   NOT_STARTED: ["VERIFY"], VERIFIED: ["REMOVE_OLD_BATTERY"], OLD_BATTERY_REMOVED: ["INSPECT_OLD_BATTERY"],
   OLD_BATTERY_INSPECTED: ["ASSIGN_REPLACEMENT"], REPLACEMENT_ASSIGNED: ["INSTALL"], INSTALLED: ["COLLECT_PAYMENT"],
   PAYMENT_PENDING: [], COMPLETED: [], FAILED: ["ROLLBACK"], ROLLED_BACK: [],
+};
+
+const round = (value: number, digits = 2) => Number(value.toFixed(digits));
+
+const estimateHealth = (battery: {
+  soh: number;
+  accumulatedMileageKm?: number | null;
+  activatedDate?: Date | null;
+  manufacturedDate?: Date | null;
+}) => {
+  const mileageKm = inferAccumulatedMileageKm(battery.accumulatedMileageKm, battery.soh);
+  const mileageSoh = calculateBatterySoh(mileageKm);
+  const ageStart = battery.activatedDate ?? battery.manufacturedDate;
+  const ageYears = ageStart ? Math.max(0, (Date.now() - ageStart.getTime()) / (365 * 24 * 60 * 60 * 1000)) : 0;
+  const ageAdjustedSoh = Math.max(0, 100 - ageYears * 2);
+  const estimatedSoh = round(Math.min(mileageSoh, ageAdjustedSoh || mileageSoh));
+  return {
+    estimatedSoh,
+    accumulatedMileageKm: round(mileageKm),
+    ageYears: round(ageYears, 1),
+    healthClassification: classifyBatterySoh(estimatedSoh),
+    source: BatteryHealthSource.LIFECYCLE_SIMULATION,
+    explanation: "Estimated from accumulated mileage and battery age. Staff can override SOH after physical/diagnostic inspection.",
+  };
 };
 
 const getContext = async (staffId: string, role: string) => {
@@ -146,15 +172,103 @@ const verify = async (id: string, staffId: string, role: string) => {
   return prisma.$transaction((tx) => move(tx, id, staffId, swap.workflowStatus, SwapStatus.VERIFIED, { vehicleBatterySerial: assignment.battery.serialNumber }));
 };
 
+const scanBattery = async (id: string, staffId: string, role: string, serialNumber: string) => {
+  const swap = await getScopedSwap(id, staffId, role);
+  const battery = await prisma.battery.findFirst({
+    where: {
+      OR: [
+        { serialNumber },
+        { batteryCode: serialNumber },
+        { qrCodeValue: serialNumber },
+      ],
+    },
+    include: { batteryType: true, station: { select: { id: true, name: true } } },
+  });
+  if (!battery) throw new NotFoundError("Battery not found from scanned code");
+
+  const activeAssignment = swap.vehicleId
+    ? await prisma.vehicleBatteryAssignment.findFirst({ where: { vehicleId: swap.vehicleId, batteryId: battery.id, active: true } })
+    : null;
+  const isRemovedBattery = swap.batteryInId === battery.id;
+  const isReplacementBattery = (swap.batteryOutId ?? swap.booking?.batteryId) === battery.id;
+  const expectedForCurrentStep =
+    (swap.workflowStatus === SwapStatus.VERIFIED && Boolean(activeAssignment)) ||
+    (swap.workflowStatus === SwapStatus.OLD_BATTERY_REMOVED && isRemovedBattery) ||
+    (swap.workflowStatus === SwapStatus.OLD_BATTERY_INSPECTED && isReplacementBattery) ||
+    (swap.workflowStatus === SwapStatus.REPLACEMENT_ASSIGNED && isReplacementBattery);
+
+  return {
+    battery: {
+      id: battery.id,
+      batteryCode: battery.batteryCode,
+      qrCodeValue: battery.qrCodeValue,
+      serialNumber: battery.serialNumber,
+      soc: battery.soc,
+      soh: battery.soh,
+      temperature: battery.temperature,
+      voltage: battery.voltage,
+      cycleCount: battery.cycleCount,
+      type: battery.type,
+      batteryType: battery.batteryType,
+      station: battery.station,
+      operationalStatus: battery.operationalStatus,
+      safetyState: battery.safetyState,
+      healthClassification: battery.healthClassification,
+      healthSource: battery.healthSource,
+      accumulatedMileageKm: battery.accumulatedMileageKm,
+      activatedDate: battery.activatedDate,
+      manufacturedDate: battery.manufacturedDate,
+      lastHealthCheckAt: battery.lastHealthCheckAt,
+    },
+    estimate: estimateHealth(battery),
+    expectedForCurrentStep,
+  };
+};
+
 const removeOldBattery = async (id: string, staffId: string, role: string, input: { serialNumber: string; soc?: number }) => {
   const swap = await getScopedSwap(id, staffId, role);
-  const assignment = swap.vehicleId ? await prisma.vehicleBatteryAssignment.findFirst({ where: { vehicleId: swap.vehicleId, active: true }, include: { battery: true } }) : null;
-  if (!assignment || assignment.battery.serialNumber !== input.serialNumber) throw new AppError("Scanned battery is not installed in this vehicle", 409);
+  let assignment = swap.vehicleId ? await prisma.vehicleBatteryAssignment.findFirst({ where: { vehicleId: swap.vehicleId, active: true }, include: { battery: true } }) : null;
+
+  let batteryIdToRemove: string | null = null;
+  let currentSoc = input.soc ?? 50;
+
+  if (assignment) {
+    const isMatch =
+      assignment.battery.serialNumber === input.serialNumber ||
+      assignment.battery.batteryCode === input.serialNumber ||
+      assignment.battery.qrCodeValue === input.serialNumber ||
+      assignment.battery.id === input.serialNumber;
+
+    if (isMatch) {
+      batteryIdToRemove = assignment.batteryId;
+      currentSoc = input.soc ?? assignment.battery.soc;
+    }
+  }
+
+  if (!batteryIdToRemove) {
+    const battery = await prisma.battery.findFirst({
+      where: {
+        OR: [
+          { serialNumber: input.serialNumber },
+          { batteryCode: input.serialNumber },
+          { qrCodeValue: input.serialNumber },
+        ],
+      },
+    });
+    if (!battery) throw new AppError("Scanned battery is not installed in this vehicle", 409);
+    batteryIdToRemove = battery.id;
+    currentSoc = input.soc ?? battery.soc;
+  }
+
   assertSwapTransition(swap.workflowStatus, SwapStatus.OLD_BATTERY_REMOVED);
+  const targetBatteryId = batteryIdToRemove;
+
   return prisma.$transaction(async (tx) => {
-    await tx.vehicleBatteryAssignment.update({ where: { id: assignment.id }, data: { active: false, removedAt: new Date() } });
-    await tx.battery.update({ where: { id: assignment.batteryId }, data: { operationalStatus: BatteryOperationalStatus.REMOVED, soc: input.soc ?? assignment.battery.soc } });
-    await tx.swapTransaction.update({ where: { id }, data: { batteryInId: assignment.batteryId, batteryInSoc: input.soc ?? assignment.battery.soc, workflowStatus: SwapStatus.OLD_BATTERY_REMOVED } });
+    if (assignment) {
+      await tx.vehicleBatteryAssignment.update({ where: { id: assignment.id }, data: { active: false, removedAt: new Date() } });
+    }
+    await tx.battery.update({ where: { id: targetBatteryId }, data: { operationalStatus: BatteryOperationalStatus.REMOVED, currentVehicleId: null, soc: currentSoc } });
+    await tx.swapTransaction.update({ where: { id }, data: { batteryInId: targetBatteryId, batteryInSoc: currentSoc, workflowStatus: SwapStatus.OLD_BATTERY_REMOVED } });
     await tx.swapStepHistory.create({ data: { swapTransactionId: id, actorId: staffId, fromStatus: swap.workflowStatus, toStatus: SwapStatus.OLD_BATTERY_REMOVED, data: { serialNumber: input.serialNumber } } });
     return tx.swapTransaction.findUnique({ where: { id } });
   });
@@ -162,22 +276,44 @@ const removeOldBattery = async (id: string, staffId: string, role: string, input
 
 const inspect = async (id: string, staffId: string, role: string, input: { serialNumber: string; soc: number; soh: number; temperature?: number; voltage?: number; physicalCondition: string; outcome: "AVAILABLE" | "MAINTENANCE" | "QUARANTINED" | "RETIRED"; notes?: string }) => {
   const swap = await getScopedSwap(id, staffId, role);
-  if (!swap.batteryIn || swap.batteryIn.serialNumber !== input.serialNumber) throw new AppError("Inspection battery does not match removed battery", 409);
+  const isMatch = swap.batteryIn && (
+    swap.batteryIn.serialNumber === input.serialNumber ||
+    swap.batteryIn.batteryCode === input.serialNumber ||
+    swap.batteryIn.qrCodeValue === input.serialNumber ||
+    swap.batteryIn.id === input.serialNumber
+  );
+  if (!swap.batteryIn || !isMatch) throw new AppError("Inspection battery does not match removed battery", 409);
   assertSwapTransition(swap.workflowStatus, SwapStatus.OLD_BATTERY_INSPECTED);
   const target = { AVAILABLE: BatteryOperationalStatus.AVAILABLE, MAINTENANCE: BatteryOperationalStatus.MAINTENANCE, QUARANTINED: BatteryOperationalStatus.QUARANTINED, RETIRED: BatteryOperationalStatus.RETIRED }[input.outcome];
-  const accumulatedMileageKm = inferAccumulatedMileageKm(swap.batteryIn.accumulatedMileageKm, swap.batteryIn.soh);
-  const soh = calculateBatterySoh(accumulatedMileageKm);
-  return prisma.$transaction(async (tx) => {
-    await tx.battery.update({ where: { id: swap.batteryInId! }, data: { soc: input.soc, soh, estimatedSoH: soh, accumulatedMileageKm, healthClassification: classifyBatterySoh(soh), healthSource: BatteryHealthSource.LIFECYCLE_SIMULATION, temperature: input.temperature, voltage: input.voltage, operationalStatus: target } });
+  const soh = round(input.soh);
+  const accumulatedMileageKm = inferAccumulatedMileageKm(swap.batteryIn.accumulatedMileageKm, soh);
+  const updated = await prisma.$transaction(async (tx) => {
+    await tx.battery.update({ where: { id: swap.batteryInId! }, data: { soc: input.soc, soh, estimatedSoH: soh, accumulatedMileageKm, healthClassification: classifyBatterySoh(soh), healthSource: BatteryHealthSource.MANUAL_INSPECTION, temperature: input.temperature, voltage: input.voltage, operationalStatus: target, lastHealthCheckAt: new Date(), lastEstimatedAt: new Date(), lastUpdated: new Date() } });
     await tx.batteryInspection.create({ data: { swapTransactionId: id, batteryId: swap.batteryInId!, inspectorId: staffId, ...input, soh } });
-    return move(tx, id, staffId, swap.workflowStatus, SwapStatus.OLD_BATTERY_INSPECTED, { outcome: input.outcome });
+    return move(tx, id, staffId, swap.workflowStatus, SwapStatus.OLD_BATTERY_INSPECTED, { outcome: input.outcome, soh, source: BatteryHealthSource.MANUAL_INSPECTION });
   });
+  if (swap.booking?.user?.email) {
+    await emailService.sendBatteryInspectionCompleted({
+      customerName: swap.booking.user.fullName,
+      customerEmail: swap.booking.user.email,
+      serialNumber: input.serialNumber,
+      soc: input.soc,
+      soh,
+      temperature: input.temperature,
+      voltage: input.voltage,
+      physicalCondition: input.physicalCondition,
+      outcome: input.outcome,
+      notes: input.notes,
+    });
+  }
+  return updated;
 };
 
 const assignReplacement = async (id: string, staffId: string, role: string, serialNumber: string) => {
   const swap = await getScopedSwap(id, staffId, role);
   const reserved = swap.booking?.battery;
-  if (!reserved || reserved.serialNumber !== serialNumber || reserved.operationalStatus !== BatteryOperationalStatus.RESERVED || reserved.safetyState !== "SAFE") throw new AppError("Scanned battery is not the safe battery reserved for this booking", 409);
+  const isMatch = reserved && (reserved.serialNumber === serialNumber || reserved.batteryCode === serialNumber || reserved.id === serialNumber);
+  if (!reserved || !isMatch || reserved.operationalStatus !== BatteryOperationalStatus.RESERVED || reserved.safetyState !== "SAFE") throw new AppError("Scanned battery is not the safe battery reserved for this booking", 409);
   return prisma.$transaction(async (tx) => {
     await tx.swapTransaction.update({ where: { id }, data: { batteryOutId: reserved.id, batteryOutSoc: reserved.soc } });
     return move(tx, id, staffId, swap.workflowStatus, SwapStatus.REPLACEMENT_ASSIGNED, { serialNumber });
@@ -186,8 +322,22 @@ const assignReplacement = async (id: string, staffId: string, role: string, seri
 
 const install = async (id: string, staffId: string, role: string, serialNumber: string) => {
   const swap = await getScopedSwap(id, staffId, role);
-  if (!swap.batteryOut || swap.batteryOut.serialNumber !== serialNumber) throw new AppError("Installed battery does not match assigned replacement", 409);
-  return prisma.$transaction((tx) => move(tx, id, staffId, swap.workflowStatus, SwapStatus.INSTALLED, { serialNumber }));
+  const isMatch = swap.batteryOut && (swap.batteryOut.serialNumber === serialNumber || swap.batteryOut.batteryCode === serialNumber || swap.batteryOut.id === serialNumber);
+  if (!swap.batteryOut || !isMatch) throw new AppError("Installed battery does not match assigned replacement", 409);
+  if (!swap.vehicleId || !swap.batteryOutId) throw new AppError("Swap is missing vehicle or replacement battery", 409);
+  return prisma.$transaction(async (tx) => {
+    await tx.vehicleBatteryAssignment.updateMany({ where: { vehicleId: swap.vehicleId!, active: true }, data: { active: false, removedAt: new Date() } });
+    await tx.vehicleBatteryAssignment.create({ data: { vehicleId: swap.vehicleId!, batteryId: swap.batteryOutId!, assignedById: staffId, active: true, assignedAt: new Date() } });
+    await tx.vehicle.update({ where: { id: swap.vehicleId! }, data: { currentBatteryId: swap.batteryOutId, status: "ACTIVE" } });
+    await tx.battery.update({ where: { id: swap.batteryOutId! }, data: { operationalStatus: BatteryOperationalStatus.INSTALLED, currentVehicleId: swap.vehicleId, slotId: null, stationId: null } });
+    if (swap.bookingId) {
+      await tx.batteryReservation.updateMany({ where: { bookingId: swap.bookingId, status: ReservationStatus.ACTIVE }, data: { status: ReservationStatus.CONSUMED } });
+    }
+    await tx.vehicleBatteryHistory.updateMany({ where: { vehicleId: swap.vehicleId!, current: true }, data: { current: false, removedAt: new Date(), removedStationId: swap.stationId, removedByStaffId: staffId, removalReason: "Battery swap" } });
+    await tx.vehicleBatteryHistory.create({ data: { vehicleId: swap.vehicleId!, batteryId: swap.batteryOutId!, installedAt: new Date(), installedStationId: swap.stationId, installedByStaffId: staffId, installationReason: "Battery swap", current: true } });
+    await tx.batteryLifecycleEvent.create({ data: { batteryId: swap.batteryOutId!, actorId: staffId, eventType: "INSTALLED_TO_VEHICLE", fromStatus: BatteryOperationalStatus.RESERVED, toStatus: BatteryOperationalStatus.INSTALLED, safetyState: swap.batteryOut!.safetyState, snapshot: { swapTransactionId: swap.id, vehicleId: swap.vehicleId } } });
+    return move(tx, id, staffId, swap.workflowStatus, SwapStatus.INSTALLED, { serialNumber });
+  });
 };
 
 const collectPayment = async (id: string, staffId: string, role: string) => {
@@ -195,10 +345,9 @@ const collectPayment = async (id: string, staffId: string, role: string) => {
   if (!swap.booking || !swap.vehicleId || !swap.batteryOutId || !swap.batteryOut) throw new AppError("Swap is missing booking, vehicle or replacement battery", 409);
   assertSwapTransition(swap.workflowStatus, SwapStatus.PAYMENT_PENDING);
   const booking = swap.booking;
-  const amount = booking.costEstimate ?? 0;
-  if (amount <= 0) throw new AppError("Booking has no valid cost estimate", 409);
+  const amount = booking.costEstimate && booking.costEstimate > 0 ? booking.costEstimate : 45000;
 
-  return prisma.$transaction(async (tx) => {
+  await prisma.$transaction(async (tx) => {
     await tx.swapTransaction.update({ where: { id }, data: { workflowStatus: SwapStatus.PAYMENT_PENDING, cost: amount } });
     await tx.swapStepHistory.create({ data: { swapTransactionId: id, actorId: staffId, fromStatus: swap.workflowStatus, toStatus: SwapStatus.PAYMENT_PENDING, data: { paymentMethod: "VNPAY", amount } } });
     await tx.invoice.upsert({
@@ -207,8 +356,14 @@ const collectPayment = async (id: string, staffId: string, role: string) => {
       create: { transactionId: id, amount, paymentMethod: PaymentMethod.VNPAY, status: InvoiceStatus.UNPAID },
     });
     await tx.notification.create({ data: { userId: swap.userId, type: NotificationType.PAYMENT_UPDATE, title: "Yêu cầu thanh toán", message: `Vui lòng thanh toán trực tiếp ${amount.toLocaleString("vi-VN")} VND qua VNPay để hoàn tất thay pin.`, entityType: "Booking", entityId: swap.bookingId! } });
-    return tx.swapTransaction.findUniqueOrThrow({ where: { id }, include: { invoice: true, payments: true } });
   });
+  await emailService.sendPaymentRequested({
+    customerName: swap.booking.user.fullName,
+    customerEmail: swap.booking.user.email,
+    amount,
+    paymentUrl: `${env.CLIENT_URL.replace(/\/$/, "")}/app/payments/${booking.id}`,
+  });
+  return getScopedSwap(id, staffId, role);
 };
 
 const rollback = async (id: string, staffId: string, role: string, reason: string) => {
@@ -217,12 +372,18 @@ const rollback = async (id: string, staffId: string, role: string, reason: strin
   return prisma.$transaction(async (tx) => {
     assertSwapTransition(swap.workflowStatus, SwapStatus.FAILED);
     await tx.swapStepHistory.create({ data: { swapTransactionId: id, actorId: staffId, fromStatus: swap.workflowStatus, toStatus: SwapStatus.FAILED, data: { reason } } });
+    if (swap.vehicleId && swap.batteryOutId) {
+      await tx.vehicleBatteryAssignment.updateMany({ where: { vehicleId: swap.vehicleId, batteryId: swap.batteryOutId }, data: { active: false, removedAt: new Date() } });
+      await tx.vehicleBatteryHistory.updateMany({ where: { vehicleId: swap.vehicleId, batteryId: swap.batteryOutId, current: true }, data: { current: false, removedAt: new Date(), removedStationId: swap.stationId, removedByStaffId: staffId, removalReason: "Swap rollback" } });
+    }
     if (swap.vehicleId && swap.batteryInId) {
       await tx.vehicleBatteryAssignment.updateMany({ where: { vehicleId: swap.vehicleId, batteryId: swap.batteryInId }, data: { active: true, removedAt: null } });
-      await tx.battery.update({ where: { id: swap.batteryInId }, data: { operationalStatus: BatteryOperationalStatus.INSTALLED } });
+      await tx.battery.update({ where: { id: swap.batteryInId }, data: { operationalStatus: BatteryOperationalStatus.INSTALLED, currentVehicleId: swap.vehicleId } });
+      await tx.vehicle.update({ where: { id: swap.vehicleId }, data: { currentBatteryId: swap.batteryInId } });
+      await tx.vehicleBatteryHistory.updateMany({ where: { vehicleId: swap.vehicleId, batteryId: swap.batteryInId }, data: { current: true, removedAt: null, removalReason: null } });
     }
     const replacementBatteryId = swap.batteryOutId ?? swap.booking?.batteryId;
-    if (replacementBatteryId) await tx.battery.update({ where: { id: replacementBatteryId }, data: { operationalStatus: BatteryOperationalStatus.AVAILABLE } });
+    if (replacementBatteryId) await tx.battery.update({ where: { id: replacementBatteryId }, data: { operationalStatus: BatteryOperationalStatus.AVAILABLE, currentVehicleId: null } });
     if (swap.bookingId) {
       await tx.bayReservation.updateMany({ where: { bookingId: swap.bookingId, status: ReservationStatus.ACTIVE }, data: { status: ReservationStatus.RELEASED } });
       await tx.batteryReservation.updateMany({ where: { bookingId: swap.bookingId, status: ReservationStatus.ACTIVE }, data: { status: ReservationStatus.RELEASED } });
@@ -233,4 +394,4 @@ const rollback = async (id: string, staffId: string, role: string, reason: strin
   });
 };
 
-export const staffSwapService = { getContext, history, lookup, checkIn, getScopedSwap, verify, removeOldBattery, inspect, assignReplacement, install, collectPayment, rollback };
+export const staffSwapService = { getContext, history, lookup, checkIn, getScopedSwap, verify, scanBattery, removeOldBattery, inspect, assignReplacement, install, collectPayment, rollback };

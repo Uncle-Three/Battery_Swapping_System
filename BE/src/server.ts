@@ -3,6 +3,7 @@ import { env } from "./config/env";
 import { prisma } from "./config/database";
 import { ensureCoreRoles } from "./modules/auth/role-bootstrap";
 import { startBackgroundJobs } from "./modules/jobs/background-jobs.scheduler";
+import { emailService } from "./modules/email/email.service";
 
 (async () => {
   try {
@@ -16,6 +17,15 @@ import { startBackgroundJobs } from "./modules/jobs/background-jobs.scheduler";
 
   const server = app.listen(env.PORT, () => {
     console.log(`API server listening on port ${env.PORT}`);
+  });
+  console.log("Gmail SMTP configuration:", {
+    gmailUser: env.MAIL_USER || undefined,
+    passwordLoaded: Boolean(env.MAIL_PASS),
+    passwordLength: env.MAIL_PASS.length,
+  });
+  void emailService.verifyConnection().then(({ connected, skipped }) => {
+    if (connected) console.log("Gmail SMTP connection verified successfully.");
+    else if (skipped) console.log("Email delivery is disabled; Gmail SMTP verification skipped.");
   });
   const stopBackgroundJobs = startBackgroundJobs();
 

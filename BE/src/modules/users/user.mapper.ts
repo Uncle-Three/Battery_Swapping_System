@@ -7,6 +7,8 @@ type WalletLike = {
 type UserWithProfileRelations = {
   id: string;
   email: string;
+  emailVerifiedAt?: Date | null;
+  emailVerificationRequired?: boolean | null;
   fullName: string;
   phone: string | null;
   avatarUrl: string | null;
@@ -32,6 +34,7 @@ export const userMapper = {
   toResponse: (user: UserWithProfileRelations) => ({
     id: user.id,
     email: user.email,
+    emailVerified: !user.emailVerificationRequired || Boolean(user.emailVerifiedAt),
     name: user.fullName,
     phoneNumber: user.phone,
     role: user.role.name,

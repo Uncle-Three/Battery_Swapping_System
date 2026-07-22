@@ -218,6 +218,8 @@ export const getVehicleById = async (userId: string, vehicleId: string) => {
 export const createVehicle = async (userId: string, payload: any) => {
   // Normalize plate
   const normalizedPlate = payload.plateNumber.toUpperCase().trim();
+  const normalizedVin = payload.vinNumber?.trim().toUpperCase() || undefined;
+  const normalizedBatteryCode = payload.qrCodeValue.trim();
   
   const existingPlate = await prisma.vehicle.findFirst({
     where: { plateNumber: normalizedPlate }
@@ -227,13 +229,26 @@ export const createVehicle = async (userId: string, payload: any) => {
     throw new AppError("Biển số xe này đã được đăng ký", 400);
   }
 
-  if (payload.vinNumber) {
+  if (normalizedVin) {
     const existingVin = await prisma.vehicle.findFirst({
-      where: { vinNumber: payload.vinNumber }
+      where: { vinNumber: normalizedVin }
     });
     if (existingVin) {
       throw new AppError("Mã số khung (VIN) này đã được đăng ký", 400);
     }
+  }
+
+  const existingBattery = await prisma.battery.findFirst({
+    where: {
+      OR: [
+        { batteryCode: normalizedBatteryCode },
+        { qrCodeValue: normalizedBatteryCode },
+        { serialNumber: normalizedBatteryCode },
+      ],
+    },
+  });
+  if (existingBattery) {
+    throw new AppError("Mã QR pin này đã tồn tại trong hệ thống.", 409);
   }
 
   const vehicleId = await prisma.$transaction(async (tx) => {
@@ -242,7 +257,7 @@ export const createVehicle = async (userId: string, payload: any) => {
         userId,
         name: `${payload.brand} ${payload.model}`,
         plateNumber: normalizedPlate,
-        vinNumber: payload.vinNumber?.trim().toUpperCase(),
+        vinNumber: normalizedVin,
         brand: payload.brand,
         model: payload.model,
         manufactureYear: payload.manufactureYear,
@@ -259,7 +274,7 @@ export const createVehicle = async (userId: string, payload: any) => {
       },
     });
 
-    const code = payload.qrCodeValue;
+    const code = normalizedBatteryCode;
     const initialBatteryMileageKm = payload.currentMileageKm ?? 0;
     const initialBatterySoh = calculateBatterySoh(initialBatteryMileageKm);
     const newBattery = await tx.battery.create({

@@ -1,11 +1,15 @@
 import dotenv from "dotenv";
 import { z } from "zod";
 
-// Load .env.{NODE_ENV} nếu có, fallback về .env
-const envFile = process.env.NODE_ENV === "test" ? ".env.test" : ".env";
-dotenv.config({ path: envFile });
-// Fallback: load .env nếu .env.test không tồn tại (dotenv bỏ qua file không tìm thấy)
-if (process.env.NODE_ENV === "test") dotenv.config({ override: false });
+// Use one canonical environment file for every runtime.
+dotenv.config({ path: ".env" });
+
+const databaseUrlForEnvironment = (databaseUrl?: string) => {
+  if (!databaseUrl || process.env.NODE_ENV !== "test") return databaseUrl;
+  return databaseUrl.replace(/\/([^/?]+)(\?.*)?$/, (_match, databaseName: string, query = "") =>
+    `/${databaseName.endsWith("_test") ? databaseName : `${databaseName}_test`}${query}`,
+  );
+};
 
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
@@ -28,6 +32,32 @@ const envSchema = z.object({
   VNPAY_HASH_SECRET: z.string().min(1, "VNPAY_HASH_SECRET is required"),
   VNPAY_URL: z.string().url().default("https://sandbox.vnpayment.vn/paymentv2/vpcpay.html"),
   VNPAY_RETURN_URL: z.string().url(),
+  // Google login
+  GOOGLE_CLIENT_ID: z.string().default(""),
+  // Gmail SMTP. Keep disabled locally until a Gmail App Password is configured.
+  APP_MAIL_ENABLED: z.stringbool().default(true),
+  APP_MAIL_LOG_MOCK_BODY: z.stringbool().default(false),
+  MAIL_HOST: z.string().default("smtp.gmail.com"),
+  MAIL_PORT: z.coerce.number().int().positive().default(587),
+  MAIL_SECURE: z.stringbool().default(false),
+  MAIL_USER: z.string().default(""),
+  MAIL_PASS: z.string().default(""),
+  MAIL_FROM: z.string().default("Battery Swapping System <no-reply@example.com>"),
+  EMAIL_VERIFICATION_EXPIRES_MINUTES: z.coerce.number().int().min(5).max(60).default(10),
 });
 
-export const env = envSchema.parse(process.env);
+const gmailUsername = process.env.GMAIL_USERNAME?.trim();
+const mailPassword = (process.env.MAIL_PASS || process.env.GMAIL_APP_PASSWORD)
+  ?.replace(/\s/g, "")
+  .trim();
+
+// Accept both generic MAIL_* names and the GMAIL_* names used by deployment
+// environments. Generic names take precedence when both are present.
+export const env = envSchema.parse({
+  ...process.env,
+  DATABASE_URL: databaseUrlForEnvironment(process.env.DATABASE_URL),
+  APP_MAIL_ENABLED: process.env.NODE_ENV === "test" ? "false" : process.env.APP_MAIL_ENABLED,
+  MAIL_USER: process.env.MAIL_USER || gmailUsername,
+  MAIL_PASS: mailPassword,
+  MAIL_FROM: process.env.MAIL_FROM || (gmailUsername ? `Battery Swapping System <${gmailUsername}>` : undefined),
+});

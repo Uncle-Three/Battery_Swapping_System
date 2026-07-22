@@ -22,9 +22,46 @@ enum UserStatus {
   BLOCKED
 }
 
+enum AuthProvider {
+  LOCAL
+  GOOGLE
+  BOTH
+}
+
 enum VehicleStatus {
   ACTIVE
   INACTIVE
+}
+
+enum VehicleOwnershipStatus {
+  ACTIVE
+  TRANSFER_PENDING
+  LOCKED
+  INACTIVE
+}
+
+enum TransferRequestType {
+  USED_VEHICLE_PURCHASE
+  LOST_OLD_ACCOUNT
+  CHANGED_PHONE_NUMBER
+  OTHER
+}
+
+enum TransferRequestStatus {
+  DRAFT
+  PENDING
+  UNDER_REVIEW
+  NEED_MORE_INFORMATION
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum AccountRecoveryRequestStatus {
+  PENDING
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
 }
 
 enum StationStatus {
@@ -214,6 +251,8 @@ enum NotificationType {
   BOOKING_UPDATE
   PAYMENT_UPDATE
   SYSTEM
+  VEHICLE_TRANSFER
+  ACCOUNT_RECOVERY
 }
 
 enum NotificationStatus {
@@ -279,41 +318,60 @@ model RolePermission {
 }
 
 model User {
-  id                 String                     @id @default(auto()) @map("_id") @db.ObjectId
-  roleId             String                     @db.ObjectId
-  fullName           String
-  phone              String?
-  email              String                     @unique
-  passwordHash       String
-  rfidCard           String?
-  licensePlate       String?
-  avatarUrl          String?
-  status             UserStatus                 @default(ACTIVE)
-  role               Role                       @relation(fields: [roleId], references: [id])
-  wallet             Wallet?
-  vehicles           Vehicle[]
-  bookings           Booking[]
-  swapTransactions   SwapTransaction[]
-  subscriptions      Subscription[]
-  refreshSessions    RefreshSession[]
-  maintenanceRecords MaintenanceRecord[]        @relation("TechnicianMaintenanceRecords")
-  auditLogs          AuditLog[]                 @relation("AdminAuditLogs")
-  payments           PaymentTransaction[]
-  stationAssignments StationAssignment[]
-  batteryAssignments VehicleBatteryAssignment[] @relation("BatteryAssignmentActor")
-  lifecycleEvents    BatteryLifecycleEvent[]    @relation("LifecycleEventActor")
-  notifications      Notification[]
-  approvedBookings   Booking[]                  @relation("BookingApprover")
-  bookingApprovals   BookingApprovalHistory[]   @relation("BookingApprovalManager")
-  staffedSwaps       SwapTransaction[]          @relation("SwapStaff")
-  batteryInspections BatteryInspection[]        @relation("BatteryInspector")
-  swapStepHistory    SwapStepHistory[]          @relation("SwapStepActor")
-  createdAt          DateTime                   @default(now())
-  updatedAt          DateTime                   @updatedAt
+  id                        String                     @id @default(auto()) @map("_id") @db.ObjectId
+  roleId                    String                     @db.ObjectId
+  fullName                  String
+  phone                     String?
+  email                     String                     @unique
+  emailVerifiedAt           DateTime?
+  emailVerificationRequired Boolean?                   @default(false)
+  passwordHash              String
+  googleId                  String?                    @unique
+  authProvider              AuthProvider               @default(LOCAL)
+  rfidCard                  String?
+  licensePlate              String?
+  avatarUrl                 String?
+  status                    UserStatus                 @default(ACTIVE)
+  role                      Role                       @relation(fields: [roleId], references: [id])
+  wallet                    Wallet?
+  vehicles                  Vehicle[]
+  bookings                  Booking[]
+  swapTransactions          SwapTransaction[]
+  subscriptions             Subscription[]
+  refreshSessions           RefreshSession[]
+  maintenanceRecords        MaintenanceRecord[]        @relation("TechnicianMaintenanceRecords")
+  auditLogs                 AuditLog[]                 @relation("AdminAuditLogs")
+  payments                  PaymentTransaction[]
+  stationAssignments        StationAssignment[]
+  batteryAssignments        VehicleBatteryAssignment[] @relation("BatteryAssignmentActor")
+  lifecycleEvents           BatteryLifecycleEvent[]    @relation("LifecycleEventActor")
+  notifications             Notification[]
+  emailVerificationTokens   EmailVerificationToken[]
+  approvedBookings          Booking[]                  @relation("BookingApprover")
+  bookingApprovals          BookingApprovalHistory[]   @relation("BookingApprovalManager")
+  staffedSwaps              SwapTransaction[]          @relation("SwapStaff")
+  batteryInspections        BatteryInspection[]        @relation("BatteryInspector")
+  swapStepHistory           SwapStepHistory[]          @relation("SwapStepActor")
+  createdAt                 DateTime                   @default(now())
+  updatedAt                 DateTime                   @updatedAt
 
   @@index([roleId])
   @@index([status])
+  @@index([authProvider])
   @@map("users")
+}
+
+model EmailVerificationToken {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String   @db.ObjectId
+  tokenHash String   @unique
+  expiresAt DateTime
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("email_verification_tokens")
 }
 
 model RefreshSession {
@@ -340,6 +398,7 @@ model Vehicle {
   name                    String
   plateNumber             String                     @unique
   vinNumber               String?                    @unique
+  qrCode                  String?                    @unique
   brand                   String?
   model                   String?
   manufactureYear         Int?
@@ -359,6 +418,7 @@ model Vehicle {
   vehicleModelId          String?                    @db.ObjectId
   batteryCount            Int                        @default(1)
   status                  VehicleStatus              @default(ACTIVE)
+  ownershipStatus         VehicleOwnershipStatus     @default(ACTIVE)
   user                    User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
   vehicleModel            VehicleModel?              @relation(fields: [vehicleModelId], references: [id], onDelete: SetNull)
   batteryAssignments      VehicleBatteryAssignment[]
@@ -367,11 +427,14 @@ model Vehicle {
   replacementRequests     ReplacementRequest[]
   bookings                Booking[]
   swapTransactions        SwapTransaction[]
+  ownershipHistories      VehicleOwnershipHistory[]
+  transferRequests        VehicleTransferRequest[]
   createdAt               DateTime                   @default(now())
   updatedAt               DateTime                   @updatedAt
 
   @@index([userId])
   @@index([status])
+  @@index([ownershipStatus])
   @@index([vehicleModelId])
   @@map("vehicles")
 }
@@ -907,6 +970,7 @@ model SwapTransaction {
   batteryOut     Battery?             @relation("BatteryOutTransactions", fields: [batteryOutId], references: [id], onDelete: SetNull)
   invoice        Invoice?
   inspection     BatteryInspection?
+  warrantyCard   WarrantyCard?
   stepHistory    SwapStepHistory[]
   payments       PaymentTransaction[]
   startedAt      DateTime             @default(now())
@@ -1062,6 +1126,7 @@ model SystemSetting {
 model AuditLog {
   id         String   @id @default(auto()) @map("_id") @db.ObjectId
   adminId    String?  @db.ObjectId
+  actorId    String?  @db.ObjectId
   action     String
   details    String?
   actorRole  String?
@@ -1077,6 +1142,7 @@ model AuditLog {
   createdAt  DateTime @default(now())
 
   @@index([adminId])
+  @@index([actorId])
   @@index([entityType, entityId])
   @@index([stationId, createdAt])
   @@map("audit_logs")
@@ -1118,4 +1184,119 @@ model VehicleBatteryHistory {
   @@index([vehicleId])
   @@index([batteryId])
   @@map("vehicle_battery_history")
+}
+
+model WarrantyCard {
+  id                String          @id @default(auto()) @map("_id") @db.ObjectId
+  swapTransactionId String          @unique @db.ObjectId
+  userId            String          @db.ObjectId
+  batteryId         String          @db.ObjectId
+  vehicleId         String          @db.ObjectId
+  stationId         String          @db.ObjectId
+  warrantyNumber    String          @unique
+  issuedAt          DateTime        @default(now())
+  expiresAt         DateTime
+  swapTransaction   SwapTransaction @relation(fields: [swapTransactionId], references: [id], onDelete: Cascade)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@index([userId])
+  @@index([batteryId])
+  @@map("warranty_cards")
+}
+
+model VehicleOwnershipHistory {
+  id                String    @id @default(auto()) @map("_id") @db.ObjectId
+  vehicleId         String    @db.ObjectId
+  previousOwnerId   String?   @db.ObjectId
+  newOwnerId        String    @db.ObjectId
+  transferRequestId String?   @db.ObjectId
+  transferReason    String?
+  transferredBy     String?   @db.ObjectId
+  transferredAt     DateTime  @default(now())
+  notes             String?
+  vehicle           Vehicle   @relation(fields: [vehicleId], references: [id])
+
+  @@index([vehicleId])
+  @@index([newOwnerId])
+  @@index([previousOwnerId])
+  @@map("vehicle_ownership_history")
+}
+
+model VehicleTransferRequest {
+  id                        String                @id @default(auto()) @map("_id") @db.ObjectId
+  vehicleId                 String                @db.ObjectId
+  currentOwnerId            String?               @db.ObjectId
+  requestedOwnerId          String                @db.ObjectId
+  requestType               TransferRequestType
+  reason                    String?
+  registrationDocumentUrl   String?
+  identityDocumentUrl       String?
+  purchaseContractUrl       String?
+  additionalDocumentUrls    String[]
+  status                    TransferRequestStatus @default(DRAFT)
+  submittedAt               DateTime?
+  reviewedAt                DateTime?
+  reviewedBy                String?               @db.ObjectId
+  rejectionReason           String?
+  adminNotes                String?
+  additionalInfoRequest     String?
+  vehicle                   Vehicle               @relation(fields: [vehicleId], references: [id])
+  createdAt                 DateTime              @default(now())
+  updatedAt                 DateTime              @updatedAt
+
+  @@index([vehicleId, status])
+  @@index([requestedOwnerId, status])
+  @@index([currentOwnerId])
+  @@index([status, createdAt])
+  @@map("vehicle_transfer_requests")
+}
+
+model PasswordResetToken {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String   @db.ObjectId
+  tokenHash String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("password_reset_tokens")
+}
+
+model PhoneChangeRequest {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  userId      String    @db.ObjectId
+  newPhone    String
+  otpHash     String
+  expiresAt   DateTime
+  attempts    Int       @default(0)
+  verifiedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([userId])
+  @@map("phone_change_requests")
+}
+
+model AccountRecoveryRequest {
+  id               String                       @id @default(auto()) @map("_id") @db.ObjectId
+  userId           String?                      @db.ObjectId
+  contactEmail     String
+  contactPhone     String?
+  description      String
+  documentUrls     String[]
+  status           AccountRecoveryRequestStatus @default(PENDING)
+  reviewedBy       String?                      @db.ObjectId
+  reviewedAt       DateTime?
+  adminNotes       String?
+  rejectionReason  String?
+  resolvedAction   String?
+  createdAt        DateTime                     @default(now())
+  updatedAt        DateTime                     @updatedAt
+
+  @@index([status, createdAt])
+  @@index([contactEmail])
+  @@map("account_recovery_requests")
 }

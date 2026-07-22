@@ -30,3 +30,13 @@ export const vnpayCallbackSchema = z.object({
   vnp_Amount: z.string().optional(),
   vnp_SecureHash: z.string().optional(),
 }).passthrough();
+
+// Payment history query params
+export const paymentHistoryQuerySchema = z.object({
+  status: z.enum(["PENDING", "PROCESSING", "SUCCESS", "FAILED", "CANCELLED", "REFUNDED"]).optional(),
+  method: z.enum(["MOMO", "VNPAY", "CARD", "WALLET", "CASH"]).optional(),
+  from: z.string().datetime({ offset: true }).optional(),
+  to: z.string().datetime({ offset: true }).optional(),
+  page: z.coerce.number().int().positive().default(1),
+  limit: z.coerce.number().int().positive().max(100).default(20),
+});

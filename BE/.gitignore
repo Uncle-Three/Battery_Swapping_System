@@ -1,8 +1,0 @@
-node_modules
-dist
-.env
-coverage
-*.log
-
-prisma/generated
-generated

@@ -1,0 +1,1 @@
+const { PrismaClient } = require('@prisma/client'); const prisma = new PrismaClient(); prisma.booking.findFirst({ where: { id: '6a555f9d4be40fb2ea619276' }, include: { transactions: { include: { stepHistory: true } } } }).then(res => { console.log(JSON.stringify(res, null, 2)); prisma.$disconnect(); });

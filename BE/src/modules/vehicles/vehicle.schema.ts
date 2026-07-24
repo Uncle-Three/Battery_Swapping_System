@@ -49,6 +49,8 @@ export const createVehicleSchema = {
 
 export const updateVehicleSchema = {
   body: z.object({
+    vinNumber: z.string().trim().min(1, "VIN cannot be empty").optional(),
+    status: z.enum(["ACTIVE", "INACTIVE"]).optional(),
     brand: z.string().min(1, "Brand is required").optional(),
     model: z.string().min(1, "Model is required").optional(),
     color: z.string().optional(),

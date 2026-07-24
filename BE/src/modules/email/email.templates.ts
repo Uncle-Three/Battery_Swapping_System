@@ -1,21 +1,15 @@
 import type {
   BatteryInspectionEmailData,
   BookingEmailData,
-<<<<<<< HEAD
   EmailVerificationData,
   EmailMessage,
   MaintenanceEmailData,
   PaymentEmailData,
-=======
-  EmailMessage,
-  MaintenanceEmailData,
->>>>>>> c1e66c0b73c4c02a2d09fc6d7459f123759cc74f
   SwapCompletedEmailData,
   WarrantyEmailData,
   SwapSummaryReportEmailData,
 } from "./email.types";
 
-<<<<<<< HEAD
 const escapeHtml = (value: unknown) => String(value ?? "-")
   .replaceAll("&", "&amp;")
   .replaceAll("<", "&lt;")
@@ -23,8 +17,6 @@ const escapeHtml = (value: unknown) => String(value ?? "-")
   .replaceAll('"', "&quot;")
   .replaceAll("'", "&#039;");
 
-=======
->>>>>>> c1e66c0b73c4c02a2d09fc6d7459f123759cc74f
 const dateText = (value?: Date | string | null) =>
   value ? new Date(value).toLocaleString("vi-VN") : "Chua cap nhat";
 
@@ -32,11 +24,7 @@ const moneyText = (value: number) => `${value.toLocaleString("vi-VN")} VND`;
 
 const shell = (title: string, rows: Array<[string, string | number | null | undefined]>) => {
   const body = rows
-<<<<<<< HEAD
     .map(([label, value]) => `<tr><td style="padding:6px 12px;color:#475569">${escapeHtml(label)}</td><td style="padding:6px 12px;font-weight:600">${escapeHtml(value)}</td></tr>`)
-=======
-    .map(([label, value]) => `<tr><td style="padding:6px 12px;color:#475569">${label}</td><td style="padding:6px 12px;font-weight:600">${value ?? "-"}</td></tr>`)
->>>>>>> c1e66c0b73c4c02a2d09fc6d7459f123759cc74f
     .join("");
   return `
     <div style="font-family:Arial,sans-serif;color:#0f172a;line-height:1.5">
@@ -51,7 +39,6 @@ const textFromRows = (title: string, rows: Array<[string, string | number | null
   [title, ...rows.map(([label, value]) => `${label}: ${value ?? "-"}`), "Battery Swapping System"].join("\n");
 
 export const emailTemplates = {
-<<<<<<< HEAD
   verifyEmail: (data: EmailVerificationData): EmailMessage => {
     const subject = "Xác minh email BatterySwap";
     const html = `
@@ -93,8 +80,6 @@ export const emailTemplates = {
     return { to: data.customerEmail, subject, text: textFromRows(subject, rows), html: shell(subject, rows) };
   },
 
-=======
->>>>>>> c1e66c0b73c4c02a2d09fc6d7459f123759cc74f
   bookingApproved: (data: BookingEmailData): EmailMessage => {
     const rows: Array<[string, string | number | null | undefined]> = [
       ["Khach hang", data.customerName],

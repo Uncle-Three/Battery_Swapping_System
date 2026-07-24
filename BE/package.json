@@ -18,6 +18,7 @@
         "db:reset": "tsx scripts/reset-database.ts",
         "db:seed": "tsx prisma/seed.ts",
         "db:repair-battery-codes": "tsx scripts/repair-battery-codes.ts",
+        "db:repair-legacy-vehicles": "tsx scripts/repair-legacy-vehicles.ts",
         "db:create-admin": "tsx scripts/create-admin.ts",
         "test": "vitest run",
         "test:watch": "vitest",

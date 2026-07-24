@@ -62,10 +62,7 @@ export const getMyVehicles = async (userId: string, options: VehicleListOptions)
   const skip = page * size;
   const take = size;
 
-  const where: Prisma.VehicleWhereInput = {
-    userId,
-    isDeleted: false,
-  };
+  const where: Prisma.VehicleWhereInput = { userId, isDeleted: false };
 
   if (search) {
     where.OR = [
@@ -101,7 +98,8 @@ export const getMyVehicles = async (userId: string, options: VehicleListOptions)
       include: {
         batteryAssignments: {
           where: { active: true },
-          include: { battery: true }
+          orderBy: { assignedAt: "desc" },
+          include: { battery: { include: { batteryType: true } } }
         }
       }
     }),
@@ -109,45 +107,51 @@ export const getMyVehicles = async (userId: string, options: VehicleListOptions)
   ]);
 
   // Format response
-  const content = vehicles.map((v) => {
-    const currentAssignment = v.batteryAssignments[0];
-    const battery = currentAssignment ? currentAssignment.battery : null;
+  const content = await Promise.all(
+    vehicles.map(async (v) => {
+      let battery = (v.batteryAssignments[0]?.battery as any) ?? null;
+      if (!battery && v.currentBatteryId) {
+        battery = await prisma.battery.findUnique({
+          where: { id: v.currentBatteryId },
+          include: { batteryType: true },
+        }) as any;
+      }
 
-    let swapEligible = true;
-    if (!battery) swapEligible = false;
-    // Add real business logic for swap eligible
-    // e.g. checking if there are active bookings
-    
-    return {
-      id: v.id,
-      ownerId: v.userId,
-      plateNumber: v.plateNumber,
-      vin: v.vinNumber,
-      brand: v.brand,
-      model: v.model,
-      manufactureYear: v.manufactureYear,
-      purchaseDate: v.purchaseDate,
-      currentMileageKm: v.currentMileageKm,
-      batteryType: v.batteryType,
-      batteryOwnershipType: v.batteryOwnershipType,
-      status: v.status,
-      swapEligible,
-      createdAt: v.createdAt,
-      updatedAt: v.updatedAt,
-      currentBattery: battery ? {
-        id: battery.id,
-        batteryCode: battery.batteryCode,
-        qrCodeValue: battery.qrCodeValue,
-        batteryType: battery.type || "LITHIUM_ION",
-        estimatedSoH: calculateBatterySoh(inferAccumulatedMileageKm(battery.accumulatedMileageKm, battery.soh)),
-        healthClassification: battery.healthClassification,
-        healthSource: battery.healthSource,
-        status: battery.status,
-        cycleCount: battery.cycleCount,
-        lastInspectionAt: battery.lastHealthCheckAt
-      } : undefined
-    };
-  });
+      let swapEligible = true;
+      if (!battery) swapEligible = false;
+      
+      return {
+        id: v.id,
+        ownerId: v.userId,
+        plateNumber: v.plateNumber,
+        vin: v.vinNumber,
+        brand: v.brand,
+        model: v.model,
+        manufactureYear: v.manufactureYear,
+        purchaseDate: v.purchaseDate,
+        currentMileageKm: v.currentMileageKm,
+        batteryType: v.batteryType,
+        batteryOwnershipType: v.batteryOwnershipType,
+        status: v.status,
+        swapEligible,
+        createdAt: v.createdAt,
+        updatedAt: v.updatedAt,
+        currentBattery: battery ? {
+          id: battery.id,
+          batteryCode: battery.batteryCode,
+          qrCodeValue: battery.qrCodeValue,
+          batteryType: battery.batteryType?.code || battery.type || v.batteryType || "LITHIUM_ION",
+          estimatedSoH: calculateBatterySoh(inferAccumulatedMileageKm(battery.accumulatedMileageKm, battery.soh)),
+          healthClassification: battery.healthClassification,
+          healthSource: battery.healthSource,
+          status: battery.status,
+          cycleCount: battery.cycleCount,
+          lastInspectionAt: battery.lastHealthCheckAt,
+          lastSwappedAt: v.batteryAssignments[0]?.assignedAt || battery.createdAt || undefined
+        } : undefined
+      };
+    })
+  );
 
   return {
     content,
@@ -160,13 +164,89 @@ export const getMyVehicles = async (userId: string, options: VehicleListOptions)
   };
 };
 
+export const getAllVehicles = async (options: VehicleListOptions) => {
+  const { page, size, sort, search, vehicleStatus, batteryStatus, healthClassification } = options;
+  const where: Prisma.VehicleWhereInput = { isDeleted: false };
+
+  if (search) {
+    where.OR = [
+      { plateNumber: { contains: search, mode: "insensitive" } },
+      { vinNumber: { contains: search, mode: "insensitive" } },
+      { model: { contains: search, mode: "insensitive" } },
+      { brand: { contains: search, mode: "insensitive" } },
+      { user: { is: { fullName: { contains: search, mode: "insensitive" } } } },
+      { user: { is: { email: { contains: search, mode: "insensitive" } } } },
+      { user: { is: { phone: { contains: search, mode: "insensitive" } } } },
+    ];
+  }
+
+  if (vehicleStatus) where.status = vehicleStatus;
+  if (batteryStatus || healthClassification) {
+    const batteryConditions: Prisma.BatteryWhereInput = {};
+    if (batteryStatus) batteryConditions.status = batteryStatus;
+    if (healthClassification) batteryConditions.healthClassification = healthClassification;
+    where.batteryAssignments = {
+      some: { active: true, battery: { is: batteryConditions } },
+    };
+  }
+
+  const [sortField, sortDirection] = sort.split(",") as ["createdAt" | "updatedAt" | "plateNumber", "asc" | "desc"];
+  const orderBy: Prisma.VehicleOrderByWithRelationInput = { [sortField]: sortDirection };
+  const [vehicles, total] = await Promise.all([
+    prisma.vehicle.findMany({
+      where,
+      skip: page * size,
+      take: size,
+      orderBy,
+      include: {
+        user: { select: { id: true, fullName: true, email: true, phone: true } },
+      },
+    }),
+    prisma.vehicle.count({ where }),
+  ]);
+
+  return {
+    content: vehicles.map((vehicle) => ({
+      id: vehicle.id,
+      userId: vehicle.userId,
+      name: vehicle.name,
+      plateNumber: vehicle.plateNumber,
+      vinNumber: vehicle.vinNumber,
+      brand: vehicle.brand,
+      model: vehicle.model,
+      manufactureYear: vehicle.manufactureYear,
+      currentMileageKm: vehicle.currentMileageKm,
+      batteryType: vehicle.batteryType,
+      status: vehicle.status,
+      ownershipStatus: vehicle.ownershipStatus,
+      vehicleImageUrl: vehicle.vehicleImageUrl,
+      createdAt: vehicle.createdAt,
+      updatedAt: vehicle.updatedAt,
+      user: {
+        id: vehicle.user.id,
+        name: vehicle.user.fullName,
+        fullName: vehicle.user.fullName,
+        email: vehicle.user.email,
+        phone: vehicle.user.phone,
+      },
+    })),
+    page,
+    size,
+    totalElements: total,
+    totalPages: Math.ceil(total / size),
+    first: page === 0,
+    last: page >= Math.max(0, Math.ceil(total / size) - 1),
+  };
+};
+
 export const getVehicleById = async (userId: string, vehicleId: string) => {
   const vehicle = await prisma.vehicle.findFirst({
     where: { id: vehicleId, userId, isDeleted: false },
     include: {
       batteryAssignments: {
         where: { active: true },
-        include: { battery: true }
+        orderBy: { assignedAt: "desc" },
+        include: { battery: { include: { batteryType: true } } }
       }
     }
   });
@@ -175,8 +255,13 @@ export const getVehicleById = async (userId: string, vehicleId: string) => {
     throw new AppError("Không tìm thấy xe", 404);
   }
 
-  const currentAssignment = vehicle.batteryAssignments[0];
-  const battery = currentAssignment ? currentAssignment.battery : null;
+  let battery = (vehicle.batteryAssignments[0]?.battery as any) ?? null;
+  if (!battery && vehicle.currentBatteryId) {
+    battery = await prisma.battery.findUnique({
+      where: { id: vehicle.currentBatteryId },
+      include: { batteryType: true },
+    }) as any;
+  }
 
   return {
     id: vehicle.id,
@@ -199,7 +284,7 @@ export const getVehicleById = async (userId: string, vehicleId: string) => {
       id: battery.id,
       batteryCode: battery.batteryCode,
       qrCodeValue: battery.qrCodeValue,
-      batteryType: battery.type || "LITHIUM_ION",
+      batteryType: battery.batteryType?.code || battery.type || vehicle.batteryType || "LITHIUM_ION",
       manufacturer: battery.manufacturer,
       manufacturedDate: battery.manufacturedDate,
       activatedDate: battery.activatedDate,
@@ -210,6 +295,7 @@ export const getVehicleById = async (userId: string, vehicleId: string) => {
       status: battery.status,
       cycleCount: battery.cycleCount,
       lastInspectionAt: battery.lastHealthCheckAt,
+      lastSwappedAt: vehicle.batteryAssignments[0]?.assignedAt || battery.createdAt || undefined,
       nextRecommendedInspection: undefined // implement logic
     } : undefined
   };
@@ -322,6 +408,49 @@ export const updateVehicle = async (userId: string, vehicleId: string, payload: 
     }
 
     const data: Prisma.VehicleUpdateInput = {};
+    if (payload.vinNumber !== undefined) {
+      const normalizedVin = payload.vinNumber.trim().toUpperCase();
+      if (vehicle.vinNumber && vehicle.vinNumber !== normalizedVin) {
+        throw new AppError("Mã số khung (VIN) đã được thiết lập và không thể thay đổi", 400);
+      }
+      if (!vehicle.vinNumber) {
+        const existingVin = await tx.vehicle.findFirst({
+          where: { vinNumber: normalizedVin, id: { not: vehicleId } },
+        });
+        if (existingVin) {
+          throw new AppError("Mã số khung (VIN) này đã được đăng ký", 409);
+        }
+        data.vinNumber = normalizedVin;
+      }
+    }
+    if (payload.status !== undefined) {
+      if (payload.status === "INACTIVE") {
+        if (vehicle.status === "SWAP_PENDING") {
+          throw new AppError("Khi đang trong trạng thái thay pin thì không được tắt xe.", 400);
+        }
+        const activeSwap = await tx.swapTransaction.findFirst({
+          where: {
+            vehicleId,
+            workflowStatus: {
+              notIn: ["COMPLETED", "FAILED", "ROLLED_BACK"],
+            },
+          },
+        });
+        if (activeSwap) {
+          throw new AppError("Khi đang trong trạng thái thay pin thì không được tắt xe.", 400);
+        }
+        const activeBooking = await tx.booking.findFirst({
+          where: {
+            vehicleId,
+            status: { in: ["CHECKED_IN"] },
+          },
+        });
+        if (activeBooking) {
+          throw new AppError("Khi đang trong trạng thái thay pin thì không được tắt xe.", 400);
+        }
+      }
+      data.status = payload.status;
+    }
     if (payload.brand !== undefined) data.brand = payload.brand;
     if (payload.model !== undefined) data.model = payload.model;
     if (payload.color !== undefined) data.color = payload.color;

@@ -1,22 +1,35 @@
 import { stationRepository } from "./station.repository";
 import { prisma } from "../../config/database";
 import { NotFoundError } from "../../common/errors/not-found-error";
-import { BadRequestError } from "../../common/errors/bad-request-error";
+import { BayTimeSlotStatus, Prisma } from "@prisma/client";
+import { getVietnamEndOfDay, getVietnamStartOfDay } from "../../common/utils/vietnam-time";
 
 const mapStation = <T extends { slots: Array<{ batteries: unknown[] }> }>(station: T) => ({
   ...station,
   slots: station.slots.map(({ batteries, ...slot }) => ({ ...slot, battery: batteries[0] ?? null })),
 });
 
+const unassignedSlotFilter = {
+  OR: [
+    { bookingId: null },
+    { bookingId: { isSet: false } },
+  ],
+} satisfies Prisma.BayTimeSlotWhereInput;
+
 export const bayReservationOccupiesWindow = (
   reservation: { startsAt: Date; endsAt: Date; booking: { status: string } },
   startsAt: Date,
   endsAt: Date,
 ) => {
-  const heldUntilCompletion = reservation.booking.status === "APPROVED" || reservation.booking.status === "CHECKED_IN";
-  return heldUntilCompletion
-    ? reservation.startsAt < endsAt
-    : reservation.startsAt < endsAt && reservation.endsAt > startsAt;
+  const overlapsReservedInterval = reservation.startsAt < endsAt && reservation.endsAt > startsAt;
+  if (reservation.booking.status !== "CHECKED_IN") return overlapsReservedInterval;
+
+  // A checked-in swap may run beyond its planned end, so keep the bay occupied
+  // for later windows on that service day. It must never block future dates.
+  const bangkokDate = (value: Date) =>
+    new Date(value.getTime() + 7 * 60 * 60 * 1_000).toISOString().slice(0, 10);
+  return bangkokDate(reservation.startsAt) === bangkokDate(startsAt)
+    && reservation.startsAt < endsAt;
 };
 
 export const stationService = {
@@ -39,46 +52,58 @@ export const stationService = {
     await stationRepository.delete(id);
     return { success: true };
   },
-  bookingSchedule: async (stationId: string, vehicleId: string, date: string, durationMinutes: number, userId: string) => {
-    const [station, vehicle, bays] = await Promise.all([
+  bookingSchedule: async (stationId: string, vehicleId: string | undefined, date: string, durationMinutes: number, userId: string) => {
+    const [station, vehicle] = await Promise.all([
       prisma.station.findFirst({ where: { id: stationId, status: "ACTIVE" } }),
-      prisma.vehicle.findFirst({ where: { id: vehicleId, userId }, select: { vehicleModelId: true } }),
-      stationRepository.findServiceBays(stationId),
+      vehicleId
+        ? prisma.vehicle.findFirst({ where: { id: vehicleId, userId }, select: { vehicleModelId: true } })
+        : Promise.resolve(null),
     ]);
     if (!station) throw new NotFoundError("Active station not found");
-    if (!vehicle) throw new NotFoundError("Vehicle not found");
+    if (vehicleId && !vehicle) throw new NotFoundError("Vehicle not found");
     const openingTime = station.openingTime ?? "08:00";
-    const closingTime = station.closingTime ?? "20:00";
-    const makeTime = (time: string) => new Date(`${date}T${time}:00+07:00`);
-    const opensAt = makeTime(openingTime); const closesAt = makeTime(closingTime);
-    if (Number.isNaN(opensAt.getTime()) || Number.isNaN(closesAt.getTime()) || closesAt <= opensAt) throw new BadRequestError("Station operating hours are invalid");
-    const compatibleTypes = vehicle.vehicleModelId
+    const closingTime = station.closingTime ?? "22:00";
+    const compatibleTypes = vehicle?.vehicleModelId
       ? await prisma.batteryCompatibility.findMany({ where: { vehicleModelId: vehicle.vehicleModelId, active: true }, select: { batteryTypeId: true } })
       : [];
-    const reservations = bays.length ? await prisma.bayReservation.findMany({
+
+    // The customer schedule is sourced exclusively from slots created in
+    // Admin Bay Time Slot Management. We intentionally do not synthesize
+    // windows from station opening/closing hours.
+    const managedSlots = await prisma.bayTimeSlot.findMany({
       where: {
-        serviceBayId: { in: bays.map((bay) => bay.id) }, status: "ACTIVE", startsAt: { lt: closesAt },
-        OR: [{ endsAt: { gt: opensAt } }, { booking: { status: { in: ["APPROVED", "CHECKED_IN"] } } }],
+        stationId,
+        status: BayTimeSlotStatus.AVAILABLE,
+        ...unassignedSlotFilter,
+        startAt: {
+          gt: new Date(),
+          gte: getVietnamStartOfDay(date),
+          lt: getVietnamEndOfDay(date),
+        },
+        bay: { status: { notIn: ["MAINTENANCE", "INACTIVE"] } },
       },
-      select: { serviceBayId: true, startsAt: true, endsAt: true, booking: { select: { status: true } } },
-    }) : [];
-    const windows = [];
-    for (let cursor = new Date(opensAt); cursor.getTime() + durationMinutes * 60_000 <= closesAt.getTime(); cursor = new Date(cursor.getTime() + durationMinutes * 60_000)) {
-      const startsAt = new Date(cursor); const endsAt = new Date(cursor.getTime() + durationMinutes * 60_000);
-      if (startsAt <= new Date()) continue;
-      const resourcesByType = await Promise.all(compatibleTypes.map(({ batteryTypeId }) => stationRepository.findAvailability(stationId, batteryTypeId, startsAt, endsAt)));
+      include: { bay: { select: { bayCode: true, bayName: true } } },
+      orderBy: [{ startAt: "asc" }, { bayId: "asc" }],
+    });
+
+    const windows = await Promise.all(managedSlots.map(async (slot) => {
+      const resourcesByType = await Promise.all(compatibleTypes.map(({ batteryTypeId }) =>
+        stationRepository.findAvailability(stationId, batteryTypeId, slot.startAt, slot.endAt)));
       const resources = [...new Map(resourcesByType.flat().filter((slot) => slot.batteries.length > 0).map((slot) => [slot.id, slot])).values()];
-      let resourceIndex = 0;
-      for (const bay of bays) {
-        const occupied = reservations.some((item) => item.serviceBayId === bay.id && bayReservationOccupiesWindow(item, startsAt, endsAt));
-        const resource = occupied ? undefined : resources[resourceIndex++];
-        windows.push({
-          id: `${bay.id}:${startsAt.toISOString()}`, serviceBayId: bay.id, bayCode: bay.bayCode, bayName: bay.bayName,
-          startsAt, endsAt, durationMinutes, status: occupied ? "FULL" : "AVAILABLE",
-          batterySlotId: resource?.id ?? null, availableBatteryCount: resource?.batteries.length ?? 0,
-        });
-      }
-    }
+      const resource = resources[0];
+      return {
+        id: slot.id,
+        serviceBayId: slot.bayId,
+        bayCode: slot.bay.bayCode,
+        bayName: slot.bay.bayName,
+        startsAt: slot.startAt,
+        endsAt: slot.endAt,
+        durationMinutes: (slot.endAt.getTime() - slot.startAt.getTime()) / 60_000,
+        status: "AVAILABLE" as const,
+        batterySlotId: resource?.id ?? null,
+        availableBatteryCount: resource?.batteries.length ?? 0,
+      };
+    }));
     return { station: { id: station.id, name: station.name, openingTime, closingTime }, date, durationMinutes, windows };
   },
   availability: async (stationId: string, vehicleId: string, startsAt: Date, endsAt: Date, userId: string) => {

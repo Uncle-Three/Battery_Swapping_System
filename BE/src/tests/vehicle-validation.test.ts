@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   createVehicleSchema,
+  updateVehicleSchema,
   vehicleHistoryQuerySchema,
   vehicleIdParamsSchema,
   vehicleListQuerySchema,
@@ -40,5 +41,18 @@ describe("vehicle request validation", () => {
     expect(createVehicleSchema.body.parse(validVehicle).purchaseDate).toBeInstanceOf(Date);
     expect(() => createVehicleSchema.body.parse({ ...validVehicle, purchaseDate: "invalid-date" })).toThrow();
     expect(() => createVehicleSchema.body.parse({ ...validVehicle, unexpected: true })).toThrow();
+  });
+
+  it("accepts vinNumber when updating a vehicle", () => {
+    expect(updateVehicleSchema.body.parse({ vinNumber: "  vin-123  " })).toEqual({
+      vinNumber: "vin-123",
+    });
+    expect(() => updateVehicleSchema.body.parse({ vinNumber: "   " })).toThrow();
+  });
+
+  it("accepts only supported vehicle statuses when updating", () => {
+    expect(updateVehicleSchema.body.parse({ status: "INACTIVE" })).toEqual({ status: "INACTIVE" });
+    expect(updateVehicleSchema.body.parse({ status: "ACTIVE" })).toEqual({ status: "ACTIVE" });
+    expect(() => updateVehicleSchema.body.parse({ status: "SUSPENDED" })).toThrow();
   });
 });

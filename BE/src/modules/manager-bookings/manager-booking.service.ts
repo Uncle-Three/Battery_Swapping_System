@@ -101,14 +101,10 @@ const approve = async (id: string, managerId: string, role: string) => {
   }
 
   const updated = await prisma.$transaction(async (tx) => {
-    const reservationExpiry = new Date("2099-12-31T23:59:59Z");
     const approved = await tx.booking.update({
       where: { id },
-      data: { status: BookingStatus.APPROVED, approvedById: managerId, approvedAt: new Date(), rejectionReason: null, expiryTime: reservationExpiry },
+      data: { status: BookingStatus.APPROVED, approvedById: managerId, approvedAt: new Date(), rejectionReason: null },
     });
-    await tx.slotReservation.updateMany({ where: { bookingId: id, status: ReservationStatus.ACTIVE }, data: { expiresAt: reservationExpiry } });
-    await tx.batteryReservation.updateMany({ where: { bookingId: id, status: ReservationStatus.ACTIVE }, data: { expiresAt: reservationExpiry } });
-    await tx.bayReservation.updateMany({ where: { bookingId: id, status: ReservationStatus.ACTIVE }, data: { expiresAt: reservationExpiry } });
     await tx.bookingApprovalHistory.create({ data: { bookingId: id, managerId, action: BookingApprovalAction.APPROVED, beforeStatus: booking.status, afterStatus: BookingStatus.APPROVED } });
     await tx.notification.create({
       data: {

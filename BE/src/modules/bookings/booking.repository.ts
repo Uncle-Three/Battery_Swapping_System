@@ -1,4 +1,4 @@
-import { BookingStatus, ReservationStatus } from "@prisma/client";
+import { BayTimeSlotStatus, BookingStatus, ReservationStatus } from "@prisma/client";
 import { prisma } from "../../config/database";
 
 export const bookingRepository = {
@@ -19,7 +19,7 @@ export const bookingRepository = {
       slotReservations: { include: { slot: true }, orderBy: { createdAt: "asc" } },
       bayReservations: { include: { serviceBay: true }, orderBy: { createdAt: "asc" } },
       batteryReservations: { include: { battery: { include: { batteryType: true } } }, orderBy: { createdAt: "asc" } },
-      transactions: { include: { invoice: true, inspection: true, stepHistory: { orderBy: { createdAt: "asc" } }, payments: { orderBy: { createdAt: "asc" } } } },
+      transactions: { include: { staff: { select: { id: true, fullName: true, phone: true, email: true } }, invoice: true, inspection: true, stepHistory: { orderBy: { createdAt: "asc" } }, payments: { orderBy: { createdAt: "asc" } } } },
     },
   }),
   release: (id: string, userId: string) => prisma.$transaction(async (tx) => {
@@ -28,6 +28,16 @@ export const bookingRepository = {
     await tx.slotReservation.updateMany({ where: { bookingId: id, status: ReservationStatus.ACTIVE }, data: { status: ReservationStatus.RELEASED } });
     await tx.bayReservation.updateMany({ where: { bookingId: id, status: ReservationStatus.ACTIVE }, data: { status: ReservationStatus.RELEASED } });
     await tx.batteryReservation.updateMany({ where: { bookingId: id, status: ReservationStatus.ACTIVE }, data: { status: ReservationStatus.RELEASED } });
+    const bayTimeSlot = await tx.bayTimeSlot.findUnique({ where: { bookingId: id } });
+    if (bayTimeSlot) {
+      await tx.bayTimeSlot.update({
+        where: { id: bayTimeSlot.id },
+        data: {
+          status: bayTimeSlot.startAt > new Date() ? BayTimeSlotStatus.AVAILABLE : BayTimeSlotStatus.EXPIRED,
+          bookingId: null,
+        },
+      });
+    }
     if (booking.batteryId) await tx.battery.updateMany({ where: { id: booking.batteryId, operationalStatus: "RESERVED" }, data: { operationalStatus: "AVAILABLE" } });
     return tx.booking.update({ where: { id }, data: { status: BookingStatus.CANCELLED } });
   }),

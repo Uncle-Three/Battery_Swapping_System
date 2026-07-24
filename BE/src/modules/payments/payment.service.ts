@@ -119,22 +119,6 @@ export const paymentService = {
           const vehicleName = completedSwap.booking?.vehicle?.name ?? completedSwap.vehicle?.name;
           const plateNumber = completedSwap.booking?.vehicle?.plateNumber ?? completedSwap.vehicle?.plateNumber;
 
-<<<<<<< HEAD
-=======
-          // Email thay pin hoàn tất
-          await emailService.sendSwapCompleted({
-            customerName: completedSwap.user.fullName,
-            customerEmail: completedSwap.user.email,
-            stationName: completedSwap.station.name,
-            vehicleName,
-            plateNumber,
-            oldBatterySerial: completedSwap.batteryIn?.serialNumber,
-            newBatterySerial: completedSwap.batteryOut?.serialNumber,
-            amount: txn.amount,
-            completedAt: completedSwap.completedAt,
-          });
-
->>>>>>> c1e66c0b73c4c02a2d09fc6d7459f123759cc74f
           // Email phiếu bảo hành 1 năm
           if (completedSwap.warrantyCard) {
             await emailService.sendWarrantyIssued({
@@ -188,7 +172,6 @@ export const paymentService = {
           entityId: txn.id,
         },
       });
-<<<<<<< HEAD
       const customer = await prisma.user.findUnique({
         where: { id: txn.userId },
         select: { fullName: true, email: true },
@@ -201,8 +184,6 @@ export const paymentService = {
           reason: "Giao dịch VNPay không thành công. Vui lòng thử lại.",
         });
       }
-=======
->>>>>>> c1e66c0b73c4c02a2d09fc6d7459f123759cc74f
       return { RspCode: "00", Message: "Confirm Success" }; // VNPay vẫn yêu cầu "00" để xác nhận đã nhận được
     }
   },

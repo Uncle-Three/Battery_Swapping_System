@@ -119,6 +119,19 @@ export const paymentService = {
           const vehicleName = completedSwap.booking?.vehicle?.name ?? completedSwap.vehicle?.name;
           const plateNumber = completedSwap.booking?.vehicle?.plateNumber ?? completedSwap.vehicle?.plateNumber;
 
+          // Email thay pin hoàn tất
+          await emailService.sendSwapCompleted({
+            customerName: completedSwap.user.fullName,
+            customerEmail: completedSwap.user.email,
+            stationName: completedSwap.station.name,
+            vehicleName,
+            plateNumber,
+            oldBatterySerial: completedSwap.batteryIn?.serialNumber,
+            newBatterySerial: completedSwap.batteryOut?.serialNumber,
+            amount: txn.amount,
+            completedAt: completedSwap.completedAt,
+          });
+
           // Email phiếu bảo hành 1 năm
           if (completedSwap.warrantyCard) {
             await emailService.sendWarrantyIssued({

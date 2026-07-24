@@ -1,0 +1,1506 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+enum RoleName {
+  GUEST
+  MEMBER
+  STAFF
+  TECHNICIAN
+  MANAGER
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  BLOCKED
+}
+
+enum AuthProvider {
+  LOCAL
+  GOOGLE
+  BOTH
+}
+
+enum VehicleStatus {
+  ACTIVE
+  NEEDS_INSPECTION
+  UNSAFE
+  SWAP_PENDING
+  MAINTENANCE
+  TRANSFER_PENDING
+  LOCKED
+  INACTIVE
+}
+
+enum VehicleLockCategory {
+  OWNERSHIP_DISPUTE
+  REPORTED_STOLEN
+  FRAUD_SUSPECTED
+  INVALID_VIN
+  SAFETY_RISK
+  OTHER
+}
+
+enum VehicleIncidentSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum VehicleIncidentStatus {
+  OPEN
+  INVESTIGATING
+  RESOLVED
+  CLOSED
+}
+
+enum VehicleMaintenanceStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum IdentifierCorrectionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum VehicleOwnershipStatus {
+  ACTIVE
+  TRANSFER_PENDING
+  LOCKED
+  INACTIVE
+}
+
+enum TransferRequestType {
+  USED_VEHICLE_PURCHASE
+  LOST_OLD_ACCOUNT
+  CHANGED_PHONE_NUMBER
+  OTHER
+}
+
+enum TransferRequestStatus {
+  DRAFT
+  PENDING
+  UNDER_REVIEW
+  NEED_MORE_INFORMATION
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum AccountRecoveryRequestStatus {
+  PENDING
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+}
+
+enum StationStatus {
+  DRAFT
+  ACTIVE
+  INACTIVE
+  MAINTENANCE
+}
+
+enum ServiceBayStatus {
+  AVAILABLE
+  IN_USE
+  MAINTENANCE
+  INACTIVE
+}
+
+enum ReplacementSlotStatus {
+  AVAILABLE
+  FULL
+  TEMPORARILY_RESERVED
+  BLOCKED
+  MAINTENANCE
+  CANCELLED
+  COMPLETED
+}
+
+enum StationMaintenanceType {
+  STATION_MAINTENANCE
+  BAY_MAINTENANCE
+  BATTERY_MAINTENANCE
+  INCIDENT
+}
+
+enum StationMaintenanceStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CANCELLED
+}
+
+enum StationMaintenanceSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum BatteryStatus {
+  READY
+  CHARGING
+  MAINTENANCE
+  FAULTY
+}
+
+enum SlotStatus {
+  EMPTY
+  CHARGING
+  READY
+  MAINTENANCE
+}
+
+// Kept separate from SlotStatus because SlotStatus describes physical battery
+// cabinets, while this enum describes bookable service-bay time windows.
+enum BayTimeSlotStatus {
+  AVAILABLE
+  OFF
+  RESERVED
+  CHECKED_IN
+  IN_PROGRESS
+  COMPLETED
+  BLOCKED
+  CANCELLED
+  EXPIRED
+}
+
+enum BookingStatus {
+  CREATED
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  RESCHEDULE_PROPOSED
+  RESCHEDULED
+  CHECKED_IN
+  COMPLETED
+  CANCELLED
+  EXPIRED
+}
+
+enum TransactionStatus {
+  SUCCESS
+  FAILED
+}
+
+enum InvoiceStatus {
+  PAID
+  UNPAID
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  SUCCESS
+  FAILED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  MOMO
+  VNPAY
+  CARD
+  WALLET
+  CASH
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+}
+
+enum MaintenanceSeverity {
+  LOW
+  WARNING
+  CRITICAL
+}
+
+enum BatteryOwnershipType {
+  OWNED
+  SUBSCRIPTION
+  LEASED
+  UNKNOWN
+}
+
+enum BatteryHealthClassification {
+  HEALTHY
+  LIMITED
+  NEEDS_MAINTENANCE
+  REPLACEMENT_REQUIRED
+  UNSAFE
+  UNKNOWN
+}
+
+enum BatteryHealthSource {
+  AGE_BASED_ESTIMATION
+  LIFECYCLE_SIMULATION
+  SIMULATED_DIAGNOSTIC
+  MANUAL_INSPECTION
+  UNKNOWN
+}
+
+enum StationAssignmentRole {
+  STAFF
+  TECHNICIAN
+  MANAGER
+}
+
+enum BatterySafetyState {
+  UNKNOWN
+  SAFE
+  WARNING
+  UNSAFE
+}
+
+enum BatteryOperationalStatus {
+  AVAILABLE
+  RESERVED
+  INSTALLED
+  REMOVED
+  INSPECTION_REQUIRED
+  MAINTENANCE
+  RETIRED
+  QUARANTINED
+}
+
+enum ReplacementRequestStatus {
+  CREATED
+  USER_NOTIFIED
+  BOOKING_REQUIRED
+  BOOKED
+  CANCELLED
+  COMPLETED
+}
+
+enum SwapStatus {
+  NOT_STARTED
+  VERIFIED
+  OLD_BATTERY_REMOVED
+  OLD_BATTERY_INSPECTED
+  REPLACEMENT_ASSIGNED
+  INSTALLED
+  PAYMENT_PENDING
+  COMPLETED
+  FAILED
+  ROLLED_BACK
+}
+
+enum NotificationType {
+  BATTERY_WARNING
+  MANDATORY_REPLACEMENT
+  BOOKING_UPDATE
+  PAYMENT_UPDATE
+  SYSTEM
+  VEHICLE_TRANSFER
+  ACCOUNT_RECOVERY
+}
+
+enum NotificationStatus {
+  UNREAD
+  READ
+  ARCHIVED
+}
+
+enum ReservationStatus {
+  ACTIVE
+  CONSUMED
+  RELEASED
+  EXPIRED
+}
+
+enum BookingApprovalAction {
+  APPROVED
+  REJECTED
+  RESCHEDULE_PROPOSED
+  RESCHEDULE_CONFIRMED
+}
+
+enum BatteryInspectionOutcome {
+  AVAILABLE
+  MAINTENANCE
+  QUARANTINED
+  RETIRED
+}
+
+model Role {
+  id        String           @id @default(auto()) @map("_id") @db.ObjectId
+  name      RoleName         @unique
+  users     User[]
+  grants    RolePermission[]
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String           @id @default(auto()) @map("_id") @db.ObjectId
+  code        String           @unique
+  description String?
+  grants      RolePermission[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  id           String     @id @default(auto()) @map("_id") @db.ObjectId
+  roleId       String     @db.ObjectId
+  permissionId String     @db.ObjectId
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+
+  @@unique([roleId, permissionId])
+  @@index([permissionId])
+  @@map("role_permissions")
+}
+
+model User {
+  id                        String                     @id @default(auto()) @map("_id") @db.ObjectId
+  roleId                    String                     @db.ObjectId
+  fullName                  String
+  phone                     String?
+  email                     String                     @unique
+  emailVerifiedAt           DateTime?
+  emailVerificationRequired Boolean?                   @default(false)
+  passwordHash              String
+  googleId                  String?                    @unique
+  authProvider              AuthProvider               @default(LOCAL)
+  rfidCard                  String?
+  licensePlate              String?
+  avatarUrl                 String?
+  status                    UserStatus                 @default(ACTIVE)
+  role                      Role                       @relation(fields: [roleId], references: [id])
+  wallet                    Wallet?
+  vehicles                  Vehicle[]
+  bookings                  Booking[]
+  swapTransactions          SwapTransaction[]
+  subscriptions             Subscription[]
+  refreshSessions           RefreshSession[]
+  maintenanceRecords        MaintenanceRecord[]        @relation("TechnicianMaintenanceRecords")
+  auditLogs                 AuditLog[]                 @relation("AdminAuditLogs")
+  createdBayTimeSlots       BayTimeSlot[]              @relation("BayTimeSlotCreatedBy")
+  updatedBayTimeSlots       BayTimeSlot[]              @relation("BayTimeSlotUpdatedBy")
+  payments                  PaymentTransaction[]
+  stationAssignments        StationAssignment[]
+  batteryAssignments        VehicleBatteryAssignment[] @relation("BatteryAssignmentActor")
+  lifecycleEvents           BatteryLifecycleEvent[]    @relation("LifecycleEventActor")
+  notifications             Notification[]
+  emailVerificationTokens   EmailVerificationToken[]
+  approvedBookings          Booking[]                  @relation("BookingApprover")
+  bookingApprovals          BookingApprovalHistory[]   @relation("BookingApprovalManager")
+  staffedSwaps              SwapTransaction[]          @relation("SwapStaff")
+  batteryInspections        BatteryInspection[]        @relation("BatteryInspector")
+  swapStepHistory           SwapStepHistory[]          @relation("SwapStepActor")
+  createdAt                 DateTime                   @default(now())
+  updatedAt                 DateTime                   @updatedAt
+
+  @@index([roleId])
+  @@index([status])
+  @@index([authProvider])
+  @@map("users")
+}
+
+model EmailVerificationToken {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String   @db.ObjectId
+  tokenHash String   @unique
+  expiresAt DateTime
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("email_verification_tokens")
+}
+
+model RefreshSession {
+  id        String    @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String    @db.ObjectId
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  userAgent String?
+  ipAddress String?
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([revokedAt])
+  @@map("refresh_sessions")
+}
+
+model Vehicle {
+  id                      String                               @id @default(auto()) @map("_id") @db.ObjectId
+  userId                  String                               @db.ObjectId
+  name                    String
+  plateNumber             String                               @unique
+  vinNumber               String?                              @unique
+  qrCode                  String?                              @unique
+  brand                   String?
+  model                   String?
+  manufactureYear         Int?
+  purchaseDate            DateTime?
+  currentMileageKm        Float?                               @default(0)
+  batteryType             String
+  batteryOwnershipType    BatteryOwnershipType                 @default(UNKNOWN)
+  color                   String?
+  vehicleImageUrl         String?
+  registrationDocumentUrl String?
+  preferredStationId      String?
+  currentBatteryId        String?
+  note                    String?
+  isDeleted               Boolean                              @default(false)
+  deletedAt               DateTime?
+  deletedBy               String?
+  vehicleModelId          String?                              @db.ObjectId
+  batteryCount            Int                                  @default(1)
+  status                  VehicleStatus                        @default(ACTIVE)
+  previousStatus          VehicleStatus?
+  lockedAt                DateTime?
+  lockedBy                String?                              @db.ObjectId
+  lockCategory            VehicleLockCategory?
+  lockReason              String?
+  lockNotes               String?
+  unlockedAt              DateTime?
+  unlockedBy              String?                              @db.ObjectId
+  inactiveAt              DateTime?
+  inactiveBy              String?                              @db.ObjectId
+  inactiveReason          String?
+  ownershipStatus         VehicleOwnershipStatus               @default(ACTIVE)
+  user                    User                                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vehicleModel            VehicleModel?                        @relation(fields: [vehicleModelId], references: [id], onDelete: SetNull)
+  batteryAssignments      VehicleBatteryAssignment[]
+  batteryHistories        VehicleBatteryHistory[]
+  mileageHistories        VehicleMileageHistory[]
+  replacementRequests     ReplacementRequest[]
+  bookings                Booking[]
+  swapTransactions        SwapTransaction[]
+  ownershipHistories      VehicleOwnershipHistory[]
+  transferRequests        VehicleTransferRequest[]
+  vehicleMaintenance      VehicleMaintenanceRecord[]
+  incidents               VehicleIncident[]
+  identifierCorrections   VehicleIdentifierCorrectionRequest[]
+  createdAt               DateTime                             @default(now())
+  updatedAt               DateTime                             @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@index([ownershipStatus])
+  @@index([vehicleModelId])
+  @@map("vehicles")
+}
+
+model VehicleMaintenanceRecord {
+  id                     String                   @id @default(auto()) @map("_id") @db.ObjectId
+  vehicleId              String                   @db.ObjectId
+  code                   String                   @unique
+  type                   String
+  description            String
+  stationId              String?                  @db.ObjectId
+  technicianId           String?                  @db.ObjectId
+  expectedStartDate      DateTime
+  expectedCompletionDate DateTime?
+  completedAt            DateTime?
+  result                 String?
+  safetyResult           BatterySafetyState?
+  status                 VehicleMaintenanceStatus @default(SCHEDULED)
+  notes                  String?
+  vehicle                Vehicle                  @relation(fields: [vehicleId], references: [id])
+  createdAt              DateTime                 @default(now())
+  updatedAt              DateTime                 @updatedAt
+
+  @@index([vehicleId, createdAt])
+  @@index([status])
+  @@map("vehicle_maintenance_records")
+}
+
+model VehicleIncident {
+  id          String                  @id @default(auto()) @map("_id") @db.ObjectId
+  vehicleId   String                  @db.ObjectId
+  code        String                  @unique
+  type        String
+  severity    VehicleIncidentSeverity
+  description String
+  reporterId  String?                 @db.ObjectId
+  status      VehicleIncidentStatus   @default(OPEN)
+  resolution  String?
+  resolvedAt  DateTime?
+  vehicle     Vehicle                 @relation(fields: [vehicleId], references: [id])
+  createdAt   DateTime                @default(now())
+  updatedAt   DateTime                @updatedAt
+
+  @@index([vehicleId, createdAt])
+  @@index([severity, status])
+  @@map("vehicle_incidents")
+}
+
+model VehicleIdentifierCorrectionRequest {
+  id          String                     @id @default(auto()) @map("_id") @db.ObjectId
+  vehicleId   String                     @db.ObjectId
+  field       String
+  oldValue    String
+  newValue    String
+  reason      String
+  requestedBy String                     @db.ObjectId
+  reviewedBy  String?                    @db.ObjectId
+  reviewedAt  DateTime?
+  status      IdentifierCorrectionStatus @default(PENDING)
+  vehicle     Vehicle                    @relation(fields: [vehicleId], references: [id])
+  createdAt   DateTime                   @default(now())
+
+  @@index([vehicleId, createdAt])
+  @@index([status])
+  @@map("vehicle_identifier_correction_requests")
+}
+
+model VehicleModel {
+  id              String                 @id @default(auto()) @map("_id") @db.ObjectId
+  manufacturer    String
+  name            String
+  modelYear       Int?
+  connectorType   String
+  nominalVoltage  Float
+  batteryClass    String
+  vehicles        Vehicle[]
+  compatibilities BatteryCompatibility[]
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  @@unique([manufacturer, name, modelYear])
+  @@map("vehicle_models")
+}
+
+model Wallet {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String   @unique @db.ObjectId
+  balance   Int      @default(0)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("wallets")
+}
+
+model Station {
+  id                       String              @id @default(auto()) @map("_id") @db.ObjectId
+  code                     String              @unique
+  name                     String
+  description              String?
+  phone                    String?
+  email                    String?
+  country                  String?
+  province                 String?
+  district                 String?
+  ward                     String?
+  address                  String
+  latitude                 Float
+  longitude                Float
+  openingTime              String?
+  closingTime              String?
+  workingDays              String[]
+  holidaySupport           Boolean             @default(false)
+  maintenanceDay           String?
+  serviceBaysCount         Int                 @default(1)
+  maxVehiclesPerSlot       Int                 @default(1)
+  defaultSlotDuration      Int                 @default(30)
+  baySlotBufferMinutes     Int?                @default(0)
+  allowParallelReplacement Boolean             @default(false)
+  supportedVehicleModelIds String[]            @db.ObjectId
+  supportedBatteryTypeIds  String[]            @db.ObjectId
+  status                   StationStatus       @default(ACTIVE)
+  slots                    BatterySlot[]
+  bookings                 Booking[]
+  swapTransactions         SwapTransaction[]
+  assignments              StationAssignment[]
+  batteries                Battery[]
+  safetyRules              BatterySafetyRule[]
+  serviceBays              ServiceBay[]
+  bayTimeSlots             BayTimeSlot[]
+  createdAt                DateTime            @default(now())
+  updatedAt                DateTime            @updatedAt
+
+  @@index([status])
+  @@map("stations")
+}
+
+model StationAssignment {
+  id             String                @id @default(auto()) @map("_id") @db.ObjectId
+  userId         String                @db.ObjectId
+  stationId      String                @db.ObjectId
+  assignmentRole StationAssignmentRole
+  active         Boolean               @default(true)
+  effectiveFrom  DateTime              @default(now())
+  effectiveTo    DateTime?
+  shift          String?
+  user           User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  station        Station               @relation(fields: [stationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  @@unique([userId, stationId, assignmentRole])
+  @@index([stationId, active])
+  @@map("station_assignments")
+}
+
+model ServiceBay {
+  id                     String           @id @default(auto()) @map("_id") @db.ObjectId
+  stationId              String           @db.ObjectId
+  bayCode                String
+  bayName                String
+  status                 ServiceBayStatus @default(AVAILABLE)
+  defaultDurationMinutes Int              @default(30)
+  description            String?
+  station                Station          @relation(fields: [stationId], references: [id], onDelete: Cascade)
+  bookings               Booking[]
+  reservations           BayReservation[]
+  timeSlots              BayTimeSlot[]
+  createdAt              DateTime         @default(now())
+  updatedAt              DateTime         @updatedAt
+
+  @@unique([stationId, bayCode])
+  @@index([stationId, status])
+  @@map("service_bays")
+}
+
+model ReplacementSlot {
+  id            String                @id @default(auto()) @map("_id") @db.ObjectId
+  stationId     String                @db.ObjectId
+  bayId         String                @db.ObjectId
+  date          DateTime
+  startTime     String
+  endTime       String
+  capacity      Int
+  bookedCount   Int                   @default(0)
+  reservedCount Int                   @default(0)
+  status        ReplacementSlotStatus @default(AVAILABLE)
+  recurrence    Json?
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+
+  @@index([stationId, date])
+  @@index([bayId, date, startTime])
+  @@map("replacement_slots")
+}
+
+model StationMaintenanceEvent {
+  id                 String                     @id @default(auto()) @map("_id") @db.ObjectId
+  stationId          String                     @db.ObjectId
+  type               StationMaintenanceType
+  relatedEntityId    String?
+  relatedEntityLabel String?
+  title              String
+  description        String
+  severity           StationMaintenanceSeverity
+  status             StationMaintenanceStatus   @default(OPEN)
+  assignedStaffId    String?                    @db.ObjectId
+  startTime          DateTime                   @default(now())
+  expectedCompletion DateTime?
+  actualCompletion   DateTime?
+  resolution         String?
+  createdById        String                     @db.ObjectId
+  createdAt          DateTime                   @default(now())
+  updatedAt          DateTime                   @updatedAt
+
+  @@index([stationId, status, createdAt])
+  @@index([assignedStaffId])
+  @@map("station_maintenance_events")
+}
+
+model BatterySlot {
+  id           String            @id @default(auto()) @map("_id") @db.ObjectId
+  stationId    String            @db.ObjectId
+  slotNumber   Int
+  status       SlotStatus        @default(EMPTY)
+  station      Station           @relation(fields: [stationId], references: [id], onDelete: Cascade)
+  batteries    Battery[]         @relation("SlotBattery")
+  bookings     Booking[]
+  reservations SlotReservation[]
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  @@unique([stationId, slotNumber])
+  @@index([stationId])
+  @@index([status])
+  @@map("battery_slots")
+}
+
+model Battery {
+  id                          String                      @id @default(auto()) @map("_id") @db.ObjectId
+  batteryCode                 String                      @unique
+  qrCodeValue                 String?
+  serialNumber                String?                     @unique
+  soc                         Int
+  soh                         Float
+  temperature                 Float                       @default(25)
+  voltage                     Float                       @default(400)
+  type                        String?
+  batteryTypeId               String?                     @db.ObjectId
+  stationId                   String?                     @db.ObjectId
+  cycleCount                  Int                         @default(0)
+  manufacturer                String?
+  manufacturedDate            DateTime?
+  manufacturedAt              DateTime?
+  receivedAt                  DateTime?
+  activatedDate               DateTime?
+  ratedCapacityAh             Float?
+  ratedVoltage                Float?
+  simulatedMeasuredCapacityAh Float?
+  accumulatedMileageKm        Float?                      @default(0)
+  accumulatedDistance         Float?                      @default(0)
+  estimatedSoH                Float?
+  healthClassification        BatteryHealthClassification @default(UNKNOWN)
+  healthSource                BatteryHealthSource         @default(UNKNOWN)
+  currentVehicleId            String?
+  reservedForSwapId           String?
+  lastEstimatedAt             DateTime?
+  safetyState                 BatterySafetyState          @default(SAFE)
+  operationalStatus           BatteryOperationalStatus    @default(AVAILABLE)
+  lastHealthCheckAt           DateTime?
+  status                      BatteryStatus               @default(READY)
+  condition                   String?                     @default("NEW")
+  storageLocation             String?
+  note                        String?
+  createdById                 String?                     @db.ObjectId
+  slotId                      String?                     @db.ObjectId
+  slot                        BatterySlot?                @relation("SlotBattery", fields: [slotId], references: [id], onDelete: SetNull)
+  batteryType                 BatteryType?                @relation(fields: [batteryTypeId], references: [id], onDelete: SetNull)
+  station                     Station?                    @relation(fields: [stationId], references: [id], onDelete: SetNull)
+  bookings                    Booking[]
+  batteryInTransactions       SwapTransaction[]           @relation("BatteryInTransactions")
+  batteryOutTransactions      SwapTransaction[]           @relation("BatteryOutTransactions")
+  maintenanceRecords          MaintenanceRecord[]
+  healthLogs                  BatteryHealthLog[]
+  vehicleAssignments          VehicleBatteryAssignment[]
+  vehicleHistories            VehicleBatteryHistory[]
+  replacementRequests         ReplacementRequest[]
+  lifecycleEvents             BatteryLifecycleEvent[]
+  reservations                BatteryReservation[]
+  inspections                 BatteryInspection[]
+  movements                   BatteryMovement[]
+  lastUpdated                 DateTime                    @default(now())
+  createdAt                   DateTime                    @default(now())
+  updatedAt                   DateTime                    @updatedAt
+
+  @@index([status])
+  @@index([batteryTypeId])
+  @@index([stationId, operationalStatus, safetyState])
+  @@index([condition])
+  @@index([stationId, status])
+  @@map("batteries")
+}
+
+model BatteryMovement {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  batteryId    String   @db.ObjectId
+  movementType String
+  fromLocation String?
+  toStationId  String?  @db.ObjectId
+  toLocation   String?
+  performedBy  String   @db.ObjectId
+  note         String?
+  createdAt    DateTime @default(now())
+  battery      Battery  @relation(fields: [batteryId], references: [id], onDelete: Cascade)
+
+  @@index([batteryId])
+  @@index([toStationId])
+  @@map("battery_movements")
+}
+
+model BatteryType {
+  id              String                 @id @default(auto()) @map("_id") @db.ObjectId
+  code            String                 @unique
+  manufacturer    String?
+  chemistry       String?
+  connectorType   String?
+  nominalVoltage  Float
+  capacityKWh     Float
+  batteryClass    String?
+  batteries       Battery[]
+  compatibilities BatteryCompatibility[]
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  @@map("battery_types")
+}
+
+model BatteryCompatibility {
+  id                 String       @id @default(auto()) @map("_id") @db.ObjectId
+  vehicleModelId     String       @db.ObjectId
+  batteryTypeId      String       @db.ObjectId
+  connectorType      String
+  nominalVoltage     Float
+  minimumCapacityKWh Float
+  maximumCapacityKWh Float
+  batteryClass       String
+  active             Boolean      @default(true)
+  vehicleModel       VehicleModel @relation(fields: [vehicleModelId], references: [id], onDelete: Cascade)
+  batteryType        BatteryType  @relation(fields: [batteryTypeId], references: [id], onDelete: Cascade)
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  @@unique([vehicleModelId, batteryTypeId])
+  @@index([batteryTypeId, active])
+  @@map("battery_compatibilities")
+}
+
+model BatterySafetyRule {
+  id                 String    @id @default(auto()) @map("_id") @db.ObjectId
+  stationId          String?   @db.ObjectId
+  version            Int
+  minimumSohSafe     Int
+  minimumSohWarning  Int
+  minimumSoc         Int
+  maximumTemperature Float
+  minimumVoltage     Float
+  maximumVoltage     Float
+  effectiveFrom      DateTime
+  effectiveTo        DateTime?
+  active             Boolean   @default(true)
+  station            Station?  @relation(fields: [stationId], references: [id], onDelete: SetNull)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@unique([stationId, version])
+  @@index([active, effectiveFrom])
+  @@map("battery_safety_rules")
+}
+
+model VehicleBatteryAssignment {
+  id           String    @id @default(auto()) @map("_id") @db.ObjectId
+  vehicleId    String    @db.ObjectId
+  batteryId    String    @db.ObjectId
+  assignedById String?   @db.ObjectId
+  active       Boolean   @default(true)
+  assignedAt   DateTime  @default(now())
+  removedAt    DateTime?
+  vehicle      Vehicle   @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  battery      Battery   @relation(fields: [batteryId], references: [id], onDelete: Cascade)
+  assignedBy   User?     @relation("BatteryAssignmentActor", fields: [assignedById], references: [id], onDelete: SetNull)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([vehicleId, active])
+  @@index([batteryId, active])
+  @@map("vehicle_battery_assignments")
+}
+
+model ReplacementRequest {
+  id               String                   @id @default(auto()) @map("_id") @db.ObjectId
+  vehicleId        String                   @db.ObjectId
+  batteryId        String                   @db.ObjectId
+  reason           String
+  mandatory        Boolean                  @default(false)
+  priority         Int                      @default(0)
+  safetySnapshot   Json
+  status           ReplacementRequestStatus @default(CREATED)
+  deduplicationKey String?
+  vehicle          Vehicle                  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  battery          Battery                  @relation(fields: [batteryId], references: [id], onDelete: Cascade)
+  bookings         Booking[]
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
+
+  @@index([vehicleId, status])
+  @@index([batteryId, status])
+  @@index([mandatory, priority, createdAt])
+  @@map("replacement_requests")
+}
+
+model Notification {
+  id         String             @id @default(auto()) @map("_id") @db.ObjectId
+  userId     String             @db.ObjectId
+  type       NotificationType
+  status     NotificationStatus @default(UNREAD)
+  title      String
+  message    String
+  entityType String?
+  entityId   String?
+  metadata   Json?
+  readAt     DateTime?
+  user       User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+
+  @@index([userId, status, createdAt])
+  @@map("notifications")
+}
+
+model BatteryLifecycleEvent {
+  id          String                    @id @default(auto()) @map("_id") @db.ObjectId
+  batteryId   String                    @db.ObjectId
+  actorId     String?                   @db.ObjectId
+  eventType   String
+  fromStatus  BatteryOperationalStatus?
+  toStatus    BatteryOperationalStatus
+  safetyState BatterySafetyState
+  snapshot    Json?
+  reason      String?
+  battery     Battery                   @relation(fields: [batteryId], references: [id], onDelete: Cascade)
+  actor       User?                     @relation("LifecycleEventActor", fields: [actorId], references: [id], onDelete: SetNull)
+  createdAt   DateTime                  @default(now())
+
+  @@index([batteryId, createdAt])
+  @@map("battery_lifecycle_events")
+}
+
+model Booking {
+  id                   String                   @id @default(auto()) @map("_id") @db.ObjectId
+  bookingCode          String?
+  userId               String                   @db.ObjectId
+  vehicleId            String?                  @db.ObjectId
+  stationId            String                   @db.ObjectId
+  slotId               String?                  @db.ObjectId
+  serviceBayId         String?                  @db.ObjectId
+  batteryId            String?                  @db.ObjectId
+  replacementRequestId String?                  @db.ObjectId
+  mandatory            Boolean                  @default(false)
+  priority             Int                      @default(0)
+  reason               String?
+  vehicleName          String?
+  timeSlot             String?
+  scheduledStart       DateTime?
+  scheduledEnd         DateTime?
+  costEstimate         Int?
+  status               BookingStatus            @default(CREATED)
+  expiryTime           DateTime
+  approvedById         String?                  @db.ObjectId
+  approvedAt           DateTime?
+  rejectionReason      String?
+  rescheduleProposal   Json?
+  user                 User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vehicle              Vehicle?                 @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  station              Station                  @relation(fields: [stationId], references: [id], onDelete: Cascade)
+  slot                 BatterySlot?             @relation(fields: [slotId], references: [id], onDelete: SetNull)
+  serviceBay           ServiceBay?              @relation(fields: [serviceBayId], references: [id], onDelete: SetNull)
+  bayTimeSlot          BayTimeSlot?
+  battery              Battery?                 @relation(fields: [batteryId], references: [id], onDelete: SetNull)
+  replacementRequest   ReplacementRequest?      @relation(fields: [replacementRequestId], references: [id], onDelete: SetNull)
+  approvedBy           User?                    @relation("BookingApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  approvalHistory      BookingApprovalHistory[]
+  slotReservations     SlotReservation[]
+  bayReservations      BayReservation[]
+  batteryReservations  BatteryReservation[]
+  transactions         SwapTransaction[]
+  createdAt            DateTime                 @default(now())
+  updatedAt            DateTime                 @updatedAt
+
+  @@index([userId])
+  @@index([vehicleId])
+  @@index([stationId])
+  @@index([serviceBayId, scheduledStart])
+  @@index([replacementRequestId])
+  @@index([approvedById])
+  @@index([status])
+  @@index([expiryTime])
+  @@map("bookings")
+}
+
+model BayTimeSlot {
+  id             String            @id @default(auto()) @map("_id") @db.ObjectId
+  stationId      String            @db.ObjectId
+  bayId          String            @db.ObjectId
+  bookingId      String?           @unique @db.ObjectId
+  startAt        DateTime
+  endAt          DateTime
+  bufferMinutes  Int?              @default(0)
+  cooldownEndsAt DateTime?
+  status         BayTimeSlotStatus @default(AVAILABLE)
+  offReason      String?
+  blockedReason  String?
+  note           String?
+  createdById    String?           @db.ObjectId
+  updatedById    String?           @db.ObjectId
+  station        Station           @relation(fields: [stationId], references: [id], onDelete: Cascade)
+  bay            ServiceBay        @relation(fields: [bayId], references: [id], onDelete: Cascade)
+  booking        Booking?          @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  createdBy      User?             @relation("BayTimeSlotCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy      User?             @relation("BayTimeSlotUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@unique([bayId, startAt, endAt])
+  @@index([stationId, startAt])
+  @@index([bayId, startAt])
+  @@index([status])
+  @@map("bay_time_slots")
+}
+
+model BookingApprovalHistory {
+  id            String                @id @default(auto()) @map("_id") @db.ObjectId
+  bookingId     String                @db.ObjectId
+  managerId     String                @db.ObjectId
+  action        BookingApprovalAction
+  reason        String?
+  proposedStart DateTime?
+  proposedEnd   DateTime?
+  beforeStatus  BookingStatus
+  afterStatus   BookingStatus
+  booking       Booking               @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  manager       User                  @relation("BookingApprovalManager", fields: [managerId], references: [id])
+  createdAt     DateTime              @default(now())
+
+  @@index([bookingId, createdAt])
+  @@index([managerId])
+  @@map("booking_approval_history")
+}
+
+model SlotReservation {
+  id             String            @id @default(auto()) @map("_id") @db.ObjectId
+  bookingId      String            @db.ObjectId
+  slotId         String            @db.ObjectId
+  reservationKey String
+  startsAt       DateTime
+  endsAt         DateTime
+  expiresAt      DateTime
+  status         ReservationStatus @default(ACTIVE)
+  booking        Booking           @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  slot           BatterySlot       @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@index([slotId, status, startsAt, endsAt])
+  @@index([expiresAt, status])
+  @@map("slot_reservations")
+}
+
+model BayReservation {
+  id             String            @id @default(auto()) @map("_id") @db.ObjectId
+  bookingId      String            @db.ObjectId
+  serviceBayId   String            @db.ObjectId
+  reservationKey String            @unique
+  startsAt       DateTime
+  endsAt         DateTime
+  expiresAt      DateTime
+  status         ReservationStatus @default(ACTIVE)
+  booking        Booking           @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  serviceBay     ServiceBay        @relation(fields: [serviceBayId], references: [id], onDelete: Cascade)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@index([serviceBayId, status, startsAt, endsAt])
+  @@index([expiresAt, status])
+  @@map("bay_reservations")
+}
+
+model BatteryReservation {
+  id             String            @id @default(auto()) @map("_id") @db.ObjectId
+  bookingId      String            @db.ObjectId
+  batteryId      String            @db.ObjectId
+  reservationKey String
+  startsAt       DateTime
+  endsAt         DateTime
+  expiresAt      DateTime
+  status         ReservationStatus @default(ACTIVE)
+  booking        Booking           @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  battery        Battery           @relation(fields: [batteryId], references: [id], onDelete: Cascade)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@index([batteryId, status, startsAt, endsAt])
+  @@index([expiresAt, status])
+  @@map("battery_reservations")
+}
+
+model BatteryHealthLog {
+  id           String               @id @default(auto()) @map("_id") @db.ObjectId
+  batteryId    String               @db.ObjectId
+  soc          Int
+  soh          Float
+  temperature  Float
+  voltage      Float
+  cycleCount   Int
+  dataSource   String
+  safetyState  BatterySafetyState
+  ruleVersion  Int
+  ruleSnapshot Json
+  severity     MaintenanceSeverity?
+  errorCode    String?
+  errorLog     String?
+  recordedAt   DateTime             @default(now())
+  battery      Battery              @relation(fields: [batteryId], references: [id], onDelete: Cascade)
+
+  @@index([batteryId])
+  @@index([severity])
+  @@index([recordedAt])
+  @@map("battery_health_logs")
+}
+
+model SwapTransaction {
+  id                 String               @id @default(auto()) @map("_id") @db.ObjectId
+  userId             String               @db.ObjectId
+  stationId          String               @db.ObjectId
+  bookingId          String?              @db.ObjectId
+  vehicleId          String?              @db.ObjectId
+  staffId            String?              @db.ObjectId
+  batteryInId        String?              @db.ObjectId
+  batteryInSoc       Int?
+  batteryOutId       String?              @db.ObjectId
+  batteryOutSoc      Int?
+  cost               Int                  @default(0)
+  status             TransactionStatus    @default(SUCCESS)
+  workflowStatus     SwapStatus           @default(NOT_STARTED)
+  user               User                 @relation(fields: [userId], references: [id])
+  station            Station              @relation(fields: [stationId], references: [id])
+  booking            Booking?             @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  vehicle            Vehicle?             @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  staff              User?                @relation("SwapStaff", fields: [staffId], references: [id], onDelete: SetNull)
+  batteryIn          Battery?             @relation("BatteryInTransactions", fields: [batteryInId], references: [id], onDelete: SetNull)
+  batteryOut         Battery?             @relation("BatteryOutTransactions", fields: [batteryOutId], references: [id], onDelete: SetNull)
+  invoice            Invoice?
+  inspection         BatteryInspection?
+  warrantyCard       WarrantyCard?
+  stepHistory        SwapStepHistory[]
+  payments           PaymentTransaction[]
+  startedAt          DateTime             @default(now())
+  completedAt        DateTime?
+  failureReason      String?
+  vehicleSnapshot    Json?
+  ownerSnapshot      Json?
+  batteryInSnapshot  Json?
+  batteryOutSnapshot Json?
+  technicalChecklist Json?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+
+  @@index([userId])
+  @@index([stationId])
+  @@index([vehicleId])
+  @@index([staffId])
+  @@index([bookingId])
+  @@index([status])
+  @@map("swap_transactions")
+}
+
+model BatteryInspection {
+  id                String                   @id @default(auto()) @map("_id") @db.ObjectId
+  swapTransactionId String                   @unique @db.ObjectId
+  batteryId         String                   @db.ObjectId
+  inspectorId       String                   @db.ObjectId
+  serialNumber      String
+  soc               Int
+  soh               Float
+  temperature       Float?
+  voltage           Float?
+  physicalCondition String
+  outcome           BatteryInspectionOutcome
+  notes             String?
+  swapTransaction   SwapTransaction          @relation(fields: [swapTransactionId], references: [id], onDelete: Cascade)
+  battery           Battery                  @relation(fields: [batteryId], references: [id])
+  inspector         User                     @relation("BatteryInspector", fields: [inspectorId], references: [id])
+  createdAt         DateTime                 @default(now())
+
+  @@index([batteryId, createdAt])
+  @@index([inspectorId])
+  @@map("battery_inspections")
+}
+
+model SwapStepHistory {
+  id                String          @id @default(auto()) @map("_id") @db.ObjectId
+  swapTransactionId String          @db.ObjectId
+  actorId           String          @db.ObjectId
+  fromStatus        SwapStatus?
+  toStatus          SwapStatus
+  data              Json?
+  swapTransaction   SwapTransaction @relation(fields: [swapTransactionId], references: [id], onDelete: Cascade)
+  actor             User            @relation("SwapStepActor", fields: [actorId], references: [id])
+  createdAt         DateTime        @default(now())
+
+  @@index([swapTransactionId, createdAt])
+  @@index([actorId])
+  @@map("swap_step_history")
+}
+
+model Invoice {
+  id            String          @id @default(auto()) @map("_id") @db.ObjectId
+  transactionId String          @unique @db.ObjectId
+  amount        Int
+  paymentMethod PaymentMethod   @default(WALLET)
+  status        InvoiceStatus   @default(UNPAID)
+  transaction   SwapTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@map("invoices")
+}
+
+model PaymentTransaction {
+  id                String           @id @default(auto()) @map("_id") @db.ObjectId
+  userId            String           @db.ObjectId
+  amount            Int
+  paymentMethod     PaymentMethod
+  status            PaymentStatus    @default(PENDING)
+  description       String?
+  vnpTxnRef         String? // Partial unique index is created by scripts/setup-mongodb-indexes.ts
+  swapTransactionId String?          @db.ObjectId
+  user              User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  swapTransaction   SwapTransaction? @relation(fields: [swapTransactionId], references: [id], onDelete: SetNull)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@index([swapTransactionId])
+  @@map("payment_transactions")
+}
+
+model SubscriptionPackage {
+  id            String         @id @default(auto()) @map("_id") @db.ObjectId
+  name          String
+  price         Int
+  description   String?
+  monthlyLimit  Int?
+  isUnlimited   Boolean        @default(false)
+  isActive      Boolean        @default(true)
+  subscriptions Subscription[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@map("subscription_packages")
+}
+
+model Subscription {
+  id         String              @id @default(auto()) @map("_id") @db.ObjectId
+  userId     String              @db.ObjectId
+  packageId  String              @db.ObjectId
+  status     SubscriptionStatus  @default(ACTIVE)
+  startedAt  DateTime            @default(now())
+  expiresAt  DateTime
+  usageCount Int                 @default(0)
+  user       User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  package    SubscriptionPackage @relation(fields: [packageId], references: [id])
+  createdAt  DateTime            @default(now())
+  updatedAt  DateTime            @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@map("subscriptions")
+}
+
+model MaintenanceRecord {
+  id           String               @id @default(auto()) @map("_id") @db.ObjectId
+  batteryId    String               @db.ObjectId
+  technicianId String?              @db.ObjectId
+  soh          Float
+  soc          Int
+  status       BatteryStatus
+  severity     MaintenanceSeverity?
+  notes        String?
+  battery      Battery              @relation(fields: [batteryId], references: [id], onDelete: Cascade)
+  technician   User?                @relation("TechnicianMaintenanceRecords", fields: [technicianId], references: [id], onDelete: SetNull)
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+
+  @@index([batteryId])
+  @@index([technicianId])
+  @@map("maintenance_records")
+}
+
+model SystemSetting {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  key         String   @unique
+  value       String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("system_settings")
+}
+
+model AuditLog {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  adminId    String?  @db.ObjectId
+  actorId    String?  @db.ObjectId
+  action     String
+  details    String?
+  actorRole  String?
+  stationId  String?  @db.ObjectId
+  entityType String?
+  entityId   String?
+  before     Json?
+  after      Json?
+  requestId  String?
+  ipAddress  String?
+  userAgent  String?
+  admin      User?    @relation("AdminAuditLogs", fields: [adminId], references: [id], onDelete: SetNull)
+  createdAt  DateTime @default(now())
+
+  @@index([adminId])
+  @@index([actorId])
+  @@index([entityType, entityId])
+  @@index([stationId, createdAt])
+  @@map("audit_logs")
+}
+
+model VehicleMileageHistory {
+  id                String   @id @default(auto()) @map("_id") @db.ObjectId
+  vehicleId         String   @db.ObjectId
+  previousMileageKm Float?
+  newMileageKm      Float
+  differenceKm      Float?
+  recordedAt        DateTime @default(now())
+  recordedBy        String?
+  note              String?
+  vehicle           Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([vehicleId])
+  @@map("vehicle_mileage_history")
+}
+
+model VehicleBatteryHistory {
+  id                 String    @id @default(auto()) @map("_id") @db.ObjectId
+  vehicleId          String    @db.ObjectId
+  batteryId          String    @db.ObjectId
+  installedAt        DateTime  @default(now())
+  removedAt          DateTime?
+  installedStationId String?
+  removedStationId   String?
+  installedByStaffId String?
+  removedByStaffId   String?
+  installationReason String?
+  removalReason      String?
+  current            Boolean   @default(true)
+  vehicle            Vehicle   @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  battery            Battery   @relation(fields: [batteryId], references: [id], onDelete: Cascade)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@index([vehicleId])
+  @@index([batteryId])
+  @@map("vehicle_battery_history")
+}
+
+model WarrantyCard {
+  id                String          @id @default(auto()) @map("_id") @db.ObjectId
+  swapTransactionId String          @unique @db.ObjectId
+  userId            String          @db.ObjectId
+  batteryId         String          @db.ObjectId
+  vehicleId         String          @db.ObjectId
+  stationId         String          @db.ObjectId
+  warrantyNumber    String          @unique
+  issuedAt          DateTime        @default(now())
+  expiresAt         DateTime
+  swapTransaction   SwapTransaction @relation(fields: [swapTransactionId], references: [id], onDelete: Cascade)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@index([userId])
+  @@index([batteryId])
+  @@map("warranty_cards")
+}
+
+model VehicleOwnershipHistory {
+  id                String   @id @default(auto()) @map("_id") @db.ObjectId
+  vehicleId         String   @db.ObjectId
+  previousOwnerId   String?  @db.ObjectId
+  newOwnerId        String   @db.ObjectId
+  transferRequestId String?  @db.ObjectId
+  transferReason    String?
+  transferredBy     String?  @db.ObjectId
+  transferredAt     DateTime @default(now())
+  notes             String?
+  vehicle           Vehicle  @relation(fields: [vehicleId], references: [id])
+
+  @@index([vehicleId])
+  @@index([newOwnerId])
+  @@index([previousOwnerId])
+  @@map("vehicle_ownership_history")
+}
+
+model VehicleTransferRequest {
+  id                      String                @id @default(auto()) @map("_id") @db.ObjectId
+  vehicleId               String                @db.ObjectId
+  currentOwnerId          String?               @db.ObjectId
+  requestedOwnerId        String                @db.ObjectId
+  requestType             TransferRequestType
+  reason                  String?
+  registrationDocumentUrl String?
+  identityDocumentUrl     String?
+  purchaseContractUrl     String?
+  additionalDocumentUrls  String[]
+  status                  TransferRequestStatus @default(DRAFT)
+  submittedAt             DateTime?
+  reviewedAt              DateTime?
+  reviewedBy              String?               @db.ObjectId
+  rejectionReason         String?
+  adminNotes              String?
+  additionalInfoRequest   String?
+  vehicle                 Vehicle               @relation(fields: [vehicleId], references: [id])
+  createdAt               DateTime              @default(now())
+  updatedAt               DateTime              @updatedAt
+
+  @@index([vehicleId, status])
+  @@index([requestedOwnerId, status])
+  @@index([currentOwnerId])
+  @@index([status, createdAt])
+  @@map("vehicle_transfer_requests")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String    @db.ObjectId
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("password_reset_tokens")
+}
+
+model PhoneChangeRequest {
+  id         String    @id @default(auto()) @map("_id") @db.ObjectId
+  userId     String    @db.ObjectId
+  newPhone   String
+  otpHash    String
+  expiresAt  DateTime
+  attempts   Int       @default(0)
+  verifiedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([userId])
+  @@map("phone_change_requests")
+}
+
+model AccountRecoveryRequest {
+  id              String                       @id @default(auto()) @map("_id") @db.ObjectId
+  userId          String?                      @db.ObjectId
+  contactEmail    String
+  contactPhone    String?
+  description     String
+  documentUrls    String[]
+  status          AccountRecoveryRequestStatus @default(PENDING)
+  reviewedBy      String?                      @db.ObjectId
+  reviewedAt      DateTime?
+  adminNotes      String?
+  rejectionReason String?
+  resolvedAction  String?
+  createdAt       DateTime                     @default(now())
+  updatedAt       DateTime                     @updatedAt
+
+  @@index([status, createdAt])
+  @@index([contactEmail])
+  @@map("account_recovery_requests")
+}

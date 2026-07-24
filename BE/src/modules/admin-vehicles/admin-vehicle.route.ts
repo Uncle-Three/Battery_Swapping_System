@@ -1,0 +1,26 @@
+import { Router } from "express";
+import { authenticate } from "../../common/middleware/authenticate.middleware";
+import { authorizePermission } from "../../common/middleware/authorize-permission.middleware";
+import { validate } from "../../common/middleware/validate.middleware";
+import { Permissions } from "../../constants/permissions";
+import * as controller from "./admin-vehicle.controller";
+import * as schema from "./admin-vehicle.validation";
+
+export const adminVehicleRouter = Router();
+adminVehicleRouter.use(authenticate, authorizePermission(Permissions.SETTINGS_MANAGE));
+adminVehicleRouter.get("/", validate({ query: schema.adminVehicleListQuerySchema }), controller.list);
+adminVehicleRouter.get("/:vehicleId", validate({ params: schema.adminVehicleParamsSchema }), controller.detail);
+adminVehicleRouter.get("/:vehicleId/battery-health", validate({ params: schema.adminVehicleParamsSchema }), controller.batteryHealth);
+adminVehicleRouter.get("/:vehicleId/battery-health-logs", validate({ params: schema.adminVehicleParamsSchema }), controller.batteryHealthLogs);
+adminVehicleRouter.get("/:vehicleId/swap-history", validate({ params: schema.adminVehicleParamsSchema }), controller.swapHistory);
+adminVehicleRouter.get("/:vehicleId/maintenance-history", validate({ params: schema.adminVehicleParamsSchema }), controller.maintenanceHistory);
+adminVehicleRouter.get("/:vehicleId/incidents", validate({ params: schema.adminVehicleParamsSchema }), controller.incidents);
+adminVehicleRouter.get("/:vehicleId/ownership-history", validate({ params: schema.adminVehicleParamsSchema }), controller.ownershipHistory);
+adminVehicleRouter.get("/:vehicleId/transfer-requests", validate({ params: schema.adminVehicleParamsSchema }), controller.transferRequests);
+adminVehicleRouter.get("/:vehicleId/audit-logs", validate({ params: schema.adminVehicleParamsSchema }), controller.auditLogs);
+adminVehicleRouter.patch("/:vehicleId/lock", validate({ params: schema.adminVehicleParamsSchema, body: schema.lockVehicleSchema }), controller.lock);
+adminVehicleRouter.patch("/:vehicleId/unlock", validate({ params: schema.adminVehicleParamsSchema, body: schema.reasonSchema }), controller.unlock);
+adminVehicleRouter.patch("/:vehicleId/mark-needs-inspection", validate({ params: schema.adminVehicleParamsSchema, body: schema.reasonSchema }), controller.markNeedsInspection);
+adminVehicleRouter.patch("/:vehicleId/mark-maintenance", validate({ params: schema.adminVehicleParamsSchema, body: schema.maintenanceSchema }), controller.markMaintenance);
+adminVehicleRouter.patch("/:vehicleId/deactivate", validate({ params: schema.adminVehicleParamsSchema, body: schema.reasonSchema }), controller.deactivate);
+adminVehicleRouter.post("/:vehicleId/identifier-correction-requests", validate({ params: schema.adminVehicleParamsSchema, body: schema.identifierCorrectionSchema }), controller.identifierCorrection);

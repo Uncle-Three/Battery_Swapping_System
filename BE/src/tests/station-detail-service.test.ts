@@ -1,0 +1,71 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const db = vi.hoisted(() => ({
+  station: { findUnique: vi.fn() }, serviceBay: { findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn(), count: vi.fn(), groupBy: vi.fn() },
+  replacementSlot: { findFirst: vi.fn(), create: vi.fn(), findMany: vi.fn(), groupBy: vi.fn() }, auditLog: { create: vi.fn(), findMany: vi.fn(), count: vi.fn() },
+  battery: { findMany: vi.fn(), count: vi.fn(), groupBy: vi.fn() }, booking: { findMany: vi.fn(), count: vi.fn(), groupBy: vi.fn() },
+  stationAssignment: { findMany: vi.fn(), findFirst: vi.fn(), create: vi.fn(), update: vi.fn() }, user: { findUnique: vi.fn(), findMany: vi.fn() }, vehicle: { findMany: vi.fn() },
+  stationMaintenanceEvent: { create: vi.fn(), count: vi.fn(), findMany: vi.fn() }, swapTransaction: { findMany: vi.fn() },
+}));
+vi.mock("../config/database", () => ({ prisma: db }));
+import { stationDetailService } from "../modules/station-detail/station-detail.service";
+import { BadRequestError } from "../common/errors/bad-request-error";
+import { ConflictError } from "../common/errors/conflict-error";
+import { NotFoundError } from "../common/errors/not-found-error";
+
+const station = { id: "station", openingTime: "08:00", closingTime: "20:00" };
+beforeEach(() => { vi.clearAllMocks(); db.station.findUnique.mockResolvedValue(station); db.auditLog.create.mockResolvedValue({}); });
+
+describe("station detail persistence rules", () => {
+  it("returns 404 semantics for an unknown station", async () => { db.station.findUnique.mockResolvedValue(null); await expect(stationDetailService.detail("missing")).rejects.toBeInstanceOf(NotFoundError); });
+  it("creates and audits a service bay", async () => { db.serviceBay.findFirst.mockResolvedValue(null); db.serviceBay.create.mockResolvedValue({ id: "bay", stationId: "station", bayCode: "B01" }); await expect(stationDetailService.createBay("station", { bayCode: "B01", bayName: "Khoang 1" }, "admin")).resolves.toMatchObject({ id: "bay" }); expect(db.auditLog.create).toHaveBeenCalledOnce(); });
+  it("rejects duplicate bay code", async () => { db.serviceBay.findFirst.mockResolvedValue({ id: "existing" }); await expect(stationDetailService.createBay("station", { bayCode: "B01" }, "admin")).rejects.toBeInstanceOf(ConflictError); });
+  it("creates a valid non-overlapping slot and persists it", async () => { db.serviceBay.findFirst.mockResolvedValue({ id: "bay-a" }); db.replacementSlot.findFirst.mockResolvedValue(null); db.replacementSlot.create.mockResolvedValue({ id: "slot-a" }); await expect(stationDetailService.createSlot("station", { bayId: "bay-a", date: new Date("2026-07-14"), startTime: "09:00", endTime: "09:30", capacity: 1 }, "admin")).resolves.toMatchObject({ id: "slot-a" }); expect(db.replacementSlot.create).toHaveBeenCalledOnce(); });
+  it("rejects overlap on the same bay", async () => { db.serviceBay.findFirst.mockResolvedValue({ id: "bay-a" }); db.replacementSlot.findFirst.mockResolvedValue({ id: "occupied" }); await expect(stationDetailService.createSlot("station", { bayId: "bay-a", date: new Date(), startTime: "09:00", endTime: "09:30", capacity: 1 }, "admin")).rejects.toBeInstanceOf(ConflictError); });
+  it("allows the same time on a different bay", async () => { db.serviceBay.findFirst.mockResolvedValue({ id: "bay-b" }); db.replacementSlot.findFirst.mockImplementation(({ where }) => Promise.resolve(where.bayId === "bay-a" ? { id: "occupied" } : null)); db.replacementSlot.create.mockResolvedValue({ id: "slot-b" }); await expect(stationDetailService.createSlot("station", { bayId: "bay-b", date: new Date(), startTime: "09:00", endTime: "09:30", capacity: 1 }, "admin")).resolves.toMatchObject({ id: "slot-b" }); });
+  it("rejects a slot outside operating hours", async () => { db.serviceBay.findFirst.mockResolvedValue({ id: "bay-a" }); await expect(stationDetailService.createSlot("station", { bayId: "bay-a", date: new Date(), startTime: "07:30", endTime: "08:30", capacity: 1 }, "admin")).rejects.toBeInstanceOf(BadRequestError); });
+  it("keeps installed vehicle batteries in station inventory with vehicle and owner details", async () => {
+    db.battery.findMany.mockResolvedValue([{ id: "battery" }]);
+    db.battery.count.mockResolvedValue(1);
+
+    await expect(
+      stationDetailService.inventory("station", { page: 1, limit: 20 }),
+    ).resolves.toMatchObject({ total: 1, items: [{ id: "battery" }] });
+
+    expect(db.battery.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        AND: [expect.objectContaining({
+          OR: expect.arrayContaining([
+            { stationId: "station" },
+            expect.objectContaining({
+              stationId: null,
+              operationalStatus: "INSTALLED",
+            }),
+            expect.objectContaining({
+              stationId: null,
+              currentVehicleId: null,
+            }),
+          ]),
+        })],
+      },
+      include: expect.objectContaining({
+        vehicleAssignments: expect.objectContaining({
+          where: { active: true },
+          include: {
+            vehicle: {
+              include: expect.objectContaining({
+                user: expect.any(Object),
+              }),
+            },
+          },
+        }),
+      }),
+    }));
+  });
+  it("loads only station-scoped bookings", async () => { db.booking.findMany.mockResolvedValue([{ id: "booking", scheduledStart: new Date() }]); db.booking.count.mockResolvedValue(1); db.booking.groupBy.mockResolvedValue([]); db.vehicle.findMany.mockResolvedValue([]); await stationDetailService.bookings("station", { page: 1, limit: 20 }); expect(db.booking.findMany.mock.calls[0][0].where.stationId).toBe("station"); });
+  it("rejects a staff assignment with the wrong user role", async () => { db.user.findUnique.mockResolvedValue({ id: "user", role: { name: "MEMBER" } }); await expect(stationDetailService.createAssignment("station", { userId: "user", assignmentRole: "STAFF" }, "admin")).rejects.toBeInstanceOf(BadRequestError); });
+  it("creates and audits a maintenance record", async () => { db.stationMaintenanceEvent.create.mockResolvedValue({ id: "maintenance", type: "INCIDENT" }); await stationDetailService.createMaintenance("station", { type: "INCIDENT", title: "Sự cố", description: "Mô tả", severity: "HIGH" }, "admin"); expect(db.stationMaintenanceEvent.create).toHaveBeenCalledOnce(); expect(db.auditLog.create).toHaveBeenCalledOnce(); });
+  it("loads audit logs scoped by station", async () => { db.auditLog.findMany.mockResolvedValue([]); db.auditLog.count.mockResolvedValue(0); await stationDetailService.auditLogs("station", { page: 1, limit: 25 }); expect(db.auditLog.findMany.mock.calls[0][0].where).toEqual({ stationId: "station" }); });
+  it("loads overview KPIs from persisted station data", async () => { db.serviceBay.groupBy.mockResolvedValue([{ status: "AVAILABLE", _count: 2 }]); db.replacementSlot.groupBy.mockResolvedValue([{ status: "AVAILABLE", _count: 3 }]); db.booking.count.mockResolvedValue(1); db.battery.groupBy.mockResolvedValue([{ operationalStatus: "AVAILABLE", _count: 4 }]); db.stationAssignment.findMany.mockResolvedValue([]); db.booking.findMany.mockResolvedValue([]); db.stationMaintenanceEvent.findMany.mockResolvedValue([]); await expect(stationDetailService.overview("station")).resolves.toMatchObject({ totalBays: 2, totalSlotsToday: 3, todayBookings: 1, availableBatteries: 4 }); });
+  it("aggregates station reports from bookings, slots, batteries and swaps", async () => { db.booking.findMany.mockResolvedValue([{ status: "COMPLETED" }]); db.replacementSlot.findMany.mockResolvedValue([{ capacity: 2, bookedCount: 1, reservedCount: 0 }]); db.serviceBay.count.mockResolvedValue(1); db.battery.groupBy.mockResolvedValue([{ operationalStatus: "AVAILABLE", _count: 2 }]); db.stationMaintenanceEvent.count.mockResolvedValue(0); db.swapTransaction.findMany.mockResolvedValue([{ workflowStatus: "COMPLETED", startedAt: new Date("2026-07-14T08:00:00Z"), completedAt: new Date("2026-07-14T08:10:00Z"), cost: 100 }]); await expect(stationDetailService.reports("station", {})).resolves.toMatchObject({ bookingVolume: 1, slotUtilization: 50, completedReplacements: 1, revenueTotal: 100 }); });
+});

@@ -134,7 +134,7 @@ describe("Vehicle Transfer Feature — Business Rules", () => {
       const result = await transferService.lookupVehicle({ vin: "NEW-VIN" });
       expect(result.found).toBe(false);
       expect(result.transferRequestAllowed).toBe(false);
-      expect(result.message).toMatch(/register/i);
+      expect(result.message).toMatch(/(register|đăng ký)/i);
     });
   });
 
@@ -159,7 +159,7 @@ describe("Vehicle Transfer Feature — Business Rules", () => {
 
       const result = await transferService.lookupVehicle({ vin: "VIN001" }, "owner-1");
       expect(result.isOwnedByCurrentUser).toBe(true);
-      expect(result.message).toMatch(/already in your account/i);
+      expect(result.message).toMatch(/(already in your account|đã có trong tài khoản)/i);
     });
   });
 
@@ -201,11 +201,11 @@ describe("Vehicle Transfer Feature — Business Rules", () => {
           vehicleId: "vehicle-1",
           requestType: "USED_VEHICLE_PURCHASE",
         }),
-      ).rejects.toThrow(/already have an active transfer request/i);
+      ).rejects.toThrow(/(already have an active transfer request|đã có một yêu cầu)/i);
     });
   });
 
-  // ── Test 5: Prevent member from approving ────────────────────────────────
+  // ── Test 5: Status transition rules (ALLOWED_TRANSITIONS) ────────────────
   describe("5. Status transition rules (ALLOWED_TRANSITIONS)", () => {
     it("DRAFT can only transition to PENDING or CANCELLED", () => {
       expect(ALLOWED_TRANSITIONS["DRAFT"]).toContain("PENDING");
@@ -227,12 +227,18 @@ describe("Vehicle Transfer Feature — Business Rules", () => {
       expect(ALLOWED_TRANSITIONS["UNDER_REVIEW"]).toContain("NEED_MORE_INFORMATION");
     });
 
-    it("throws when trying to approve a PENDING request (must be UNDER_REVIEW)", async () => {
-      prismaMocks.vehicleTransferRequest.findUnique.mockResolvedValue(makeTransferRequest({ status: "PENDING" }));
+    it("allows approving a PENDING request directly", async () => {
+      const request = makeTransferRequest({ status: "PENDING" });
+      prismaMocks.vehicleTransferRequest.findUnique.mockResolvedValue(request);
+      prismaMocks.vehicle.findFirst.mockResolvedValue(makeVehicle());
+      prismaMocks._mockTx.vehicle.update.mockResolvedValue({});
+      prismaMocks._mockTx.vehicleTransferRequest.update.mockResolvedValue({});
+      prismaMocks._mockTx.vehicleOwnershipHistory.create.mockResolvedValue({});
+      prismaMocks._mockTx.auditLog.create.mockResolvedValue({});
+      prismaMocks._mockTx.notification.create.mockResolvedValue({});
 
-      await expect(
-        transferService.adminApproveTransfer("req-1", "admin-1", "ADMIN", {}, ctx),
-      ).rejects.toThrow();
+      const result = await transferService.adminApproveTransfer("req-1", "admin-1", "ADMIN", {}, ctx);
+      expect(result.message).toMatch(/(approved|thành công)/i);
     });
   });
 
@@ -249,7 +255,7 @@ describe("Vehicle Transfer Feature — Business Rules", () => {
       prismaMocks._mockTx.notification.create.mockResolvedValue({});
 
       const result = await transferService.adminApproveTransfer("req-1", "admin-1", "ADMIN", { adminNotes: "Verified" }, ctx);
-      expect(result.message).toMatch(/approved/i);
+      expect(result.message).toMatch(/(approved|thành công)/i);
       // Transaction was called
       expect(prismaMocks.$transaction).toHaveBeenCalled();
     });
@@ -343,7 +349,7 @@ describe("Vehicle Transfer Feature — Business Rules", () => {
       const result = await transferService.adminRejectTransfer("req-1", "admin-1", "ADMIN", {
         rejectionReason: "Documents are insufficient",
       }, ctx);
-      expect(result.message).toMatch(/rejected/i);
+      expect(result.message).toMatch(/(rejected|từ chối)/i);
     });
 
     it("requires a rejection reason", async () => {
@@ -425,7 +431,7 @@ describe("Vehicle Transfer Feature — Business Rules", () => {
 
       await expect(
         transferService.adminApproveTransfer("req-1", "admin-1", "ADMIN", {}, ctx),
-      ).rejects.toThrow(/ownership has changed/i);
+      ).rejects.toThrow(/(ownership has changed|thay đổi)/i);
     });
   });
 

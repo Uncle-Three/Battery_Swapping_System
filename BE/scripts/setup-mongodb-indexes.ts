@@ -15,6 +15,7 @@ const indexes: PartialIndex[] = [
   { collection: "swap_transactions", name: "swap_transactions_bookingId_partial_unique", field: "bookingId" },
   { collection: "payment_transactions", name: "payment_transactions_vnpTxnRef_partial_unique", field: "vnpTxnRef" },
   { collection: "replacement_requests", name: "replacement_requests_deduplicationKey_partial_unique", field: "deduplicationKey" },
+  { collection: "bookings", name: "bookings_bookingCode_partial_unique", field: "bookingCode" },
 ];
 
 const main = async (): Promise<void> => {

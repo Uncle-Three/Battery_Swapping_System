@@ -81,6 +81,68 @@ describe("staff swap battery workflow", () => {
     expect(result.estimate.estimatedSoh).toBeGreaterThanOrEqual(0);
   });
 
+  it("accepts the short QR code shown on the vehicle when the database stores a QR URL", async () => {
+    const storedQr = "http://localhost:5173/app/vehicles?batteryCode=BAT-HCM-2026-000005";
+    db.swapTransaction.findUnique.mockResolvedValue({
+      id: swapId,
+      stationId,
+      workflowStatus: SwapStatus.VERIFIED,
+      vehicleId,
+      batteryInId: null,
+      batteryOutId: null,
+      booking: { batteryId: null },
+      batteryIn: null,
+      batteryOut: null,
+      inspection: null,
+      stepHistory: [],
+    });
+    db.vehicleBatteryAssignment.findFirst.mockResolvedValue({
+      id: "assignment",
+      vehicleId,
+      batteryId: batteryInId,
+      active: true,
+      battery: {
+        id: batteryInId,
+        batteryCode: storedQr,
+        qrCodeValue: storedQr,
+        serialNumber: storedQr,
+        soc: 72,
+        soh: 90,
+        cycleCount: 100,
+        temperature: 32,
+        voltage: 398,
+        type: "VF3_LFP_18",
+        safetyState: BatterySafetyState.SAFE,
+        operationalStatus: BatteryOperationalStatus.INSTALLED,
+      },
+    });
+    const tx = {
+      vehicleBatteryAssignment: { update: vi.fn().mockResolvedValue({}) },
+      battery: { update: vi.fn().mockResolvedValue({}) },
+      swapTransaction: {
+        update: vi.fn().mockResolvedValue({}),
+        findUnique: vi.fn().mockResolvedValue({ id: swapId, workflowStatus: SwapStatus.OLD_BATTERY_REMOVED }),
+      },
+      swapStepHistory: { create: vi.fn().mockResolvedValue({}) },
+    };
+    db.$transaction.mockImplementation((callback: (client: typeof tx) => unknown) => callback(tx));
+
+    await staffSwapService.removeOldBattery(
+      swapId,
+      staffId,
+      "STAFF",
+      { serialNumber: "BAT-HCM-2026-000005", soc: 72 },
+    );
+
+    expect(tx.vehicleBatteryAssignment.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: "assignment" },
+      data: expect.objectContaining({ active: false }),
+    }));
+    expect(tx.battery.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: batteryInId },
+    }));
+  });
+
   it("allows staff inspection to override SOH after battery removal", async () => {
     db.swapTransaction.findUnique.mockResolvedValue({
       id: swapId,

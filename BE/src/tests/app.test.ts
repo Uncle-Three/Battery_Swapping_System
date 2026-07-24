@@ -7,6 +7,16 @@ describe("service metadata", () => {
     const response = await request(app).get("/api/v1/health").expect(200);
     expect(response.body.success).toBe(true);
     expect(response.body.data.status).toBe("ok");
+    expect(response.headers["cache-control"]).toContain("no-store");
+    expect(response.headers.etag).toBeUndefined();
+  });
+
+  it("does not return 304 for conditional API requests", async () => {
+    const response = await request(app)
+      .get("/api/v1/health")
+      .set("If-None-Match", 'W/"stale-api-response"')
+      .expect(200);
+    expect(response.body.data.status).toBe("ok");
   });
 
   it("returns a valid OpenAPI document", async () => {

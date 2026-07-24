@@ -23,6 +23,15 @@ describe("domain state machines", () => {
       .toThrow(/Invalid swap state transition/);
   });
 
+  it("allows replacement allocation immediately after removing the old battery", () => {
+    expect(() =>
+      assertSwapTransition(
+        SwapStatus.OLD_BATTERY_REMOVED,
+        SwapStatus.REPLACEMENT_ASSIGNED,
+      ),
+    ).not.toThrow();
+  });
+
   it("allows a failed swap to roll back", () => {
     expect(() => assertSwapTransition(SwapStatus.FAILED, SwapStatus.ROLLED_BACK)).not.toThrow();
   });

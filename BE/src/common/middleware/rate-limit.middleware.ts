@@ -45,3 +45,13 @@ export const emailVerificationRateLimiter = rateLimit({
   message: authRateLimitMessage,
   skip: skipInAutomatedTests,
 });
+
+export const createBatteryRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: authRateLimitMessage,
+  skip: skipInAutomatedTests,
+});
+

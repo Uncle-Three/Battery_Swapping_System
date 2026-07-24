@@ -1,6 +1,7 @@
 import { NotificationType, ReplacementRequestStatus, ReservationStatus } from "@prisma/client";
 import { prisma } from "../../config/database";
 import { expireBookings } from "../bookings/booking.scheduler";
+import { bayTimeSlotService } from "../bay-time-slots/bay-time-slot.service";
 
 export type JobRunSummary = { job: string; processed: number; startedAt: Date; finishedAt: Date };
 
@@ -40,11 +41,12 @@ export const cleanupExpiredEmailVerificationTokens = async (now = new Date()): P
 
 export const runBackgroundJobs = async (now = new Date()): Promise<JobRunSummary[]> => {
   const startedAt = new Date();
-  const [expiredBookings, reminders, staleReservations, expiredEmailTokens] = await Promise.all([
+  const [expiredBookings, reminders, staleReservations, expiredEmailTokens, expiredBayTimeSlots] = await Promise.all([
     expireBookings(now),
     notifyOverdueMandatoryReplacements(now),
     cleanupStaleReservations(now),
     cleanupExpiredEmailVerificationTokens(now),
+    bayTimeSlotService.expirePast(now),
   ]);
   const finishedAt = new Date();
   const summaries = [
@@ -52,6 +54,7 @@ export const runBackgroundJobs = async (now = new Date()): Promise<JobRunSummary
     { job: "mandatory-replacement-reminder", processed: reminders, startedAt, finishedAt },
     { job: "stale-reservation-cleanup", processed: staleReservations, startedAt, finishedAt },
     { job: "email-verification-token-cleanup", processed: expiredEmailTokens, startedAt, finishedAt },
+    { job: "bay-time-slot-expiration", processed: expiredBayTimeSlots, startedAt, finishedAt },
   ];
   console.info("Background jobs completed", summaries.map(({ job, processed }) => ({ job, processed })));
   return summaries;

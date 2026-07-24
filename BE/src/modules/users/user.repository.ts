@@ -57,7 +57,15 @@ export const userRepository = {
               vehicleModel: true,
               batteryAssignments: { where: { active: true }, include: { battery: { include: { batteryType: true, healthLogs: { orderBy: { recordedAt: "desc" }, take: 10 } } } } },
               replacementRequests: { where: { status: { notIn: ["COMPLETED", "CANCELLED"] } }, orderBy: { priority: "desc" }, take: 5 },
-              bookings: { where: { status: { in: ["CREATED", "PENDING_APPROVAL", "APPROVED", "RESCHEDULE_PROPOSED", "RESCHEDULED", "CHECKED_IN"] } }, orderBy: { createdAt: "desc" }, take: 1, include: { station: true } },
+              bookings: {
+                where: {
+                  userId,
+                  status: { in: ["CREATED", "PENDING_APPROVAL", "APPROVED", "RESCHEDULE_PROPOSED", "RESCHEDULED", "CHECKED_IN"] },
+                },
+                orderBy: { createdAt: "desc" },
+                take: 1,
+                include: { station: true },
+              },
             },
           },
           notifications: { where: { status: { not: "ARCHIVED" } }, orderBy: { createdAt: "desc" }, take: 10 },

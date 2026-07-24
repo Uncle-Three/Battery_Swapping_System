@@ -26,8 +26,9 @@ export const stationController = {
   }) satisfies RequestHandler,
 
   bookingSchedule: (async (req, res) => {
+    const vehicleId = typeof req.query.vehicleId === "string" ? req.query.vehicleId : undefined;
     const data = await stationService.bookingSchedule(
-      String(req.params.id), String(req.query.vehicleId), String(req.query.date),
+      String(req.params.id), vehicleId, String(req.query.date),
       Number(req.query.durationMinutes), req.user!.id,
     );
     res.status(200).json({ success: true, data });

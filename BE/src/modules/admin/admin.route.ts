@@ -7,11 +7,13 @@ import { validate } from "../../common/middleware/validate.middleware";
 import { adminUserParamsSchema, systemSettingParamsSchema, updateAdminUserRoleSchema, updateAdminUserStatusSchema, updateSystemSettingSchema, auditLogsQuerySchema } from "./admin.validation";
 
 import { auditLogMiddleware } from "../../common/middleware/audit.middleware";
+import { bayTimeSlotAdminRouter } from "../bay-time-slots/bay-time-slot.route";
 
 export const adminRouter = Router();
 
 adminRouter.use(authenticate);
 adminRouter.use(auditLogMiddleware);
+adminRouter.use(authorizePermission(Permissions.SETTINGS_MANAGE), bayTimeSlotAdminRouter);
 adminRouter.get("/overview", authorizePermission(Permissions.SETTINGS_MANAGE), adminController.overview);
 adminRouter.get("/audit-logs", authorizePermission(Permissions.AUDIT_LOGS_READ), validate({ query: auditLogsQuerySchema }), adminController.auditLogs);
 adminRouter.get("/settings", authorizePermission(Permissions.SETTINGS_MANAGE), adminController.settings);

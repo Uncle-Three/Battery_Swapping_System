@@ -34,23 +34,16 @@ const envSchema = z.object({
   VNPAY_RETURN_URL: z.string().url(),
   // Google login
   GOOGLE_CLIENT_ID: z.string().default(""),
-<<<<<<< HEAD
   // Gmail SMTP. Keep disabled locally until a Gmail App Password is configured.
   APP_MAIL_ENABLED: z.stringbool().default(true),
   APP_MAIL_LOG_MOCK_BODY: z.stringbool().default(false),
-=======
-  // Gmail SMTP. Empty values keep email sending disabled for local development.
->>>>>>> c1e66c0b73c4c02a2d09fc6d7459f123759cc74f
   MAIL_HOST: z.string().default("smtp.gmail.com"),
   MAIL_PORT: z.coerce.number().int().positive().default(587),
   MAIL_SECURE: z.stringbool().default(false),
   MAIL_USER: z.string().default(""),
   MAIL_PASS: z.string().default(""),
   MAIL_FROM: z.string().default("Battery Swapping System <no-reply@example.com>"),
-<<<<<<< HEAD
   EMAIL_VERIFICATION_EXPIRES_MINUTES: z.coerce.number().int().min(5).max(60).default(10),
-=======
->>>>>>> c1e66c0b73c4c02a2d09fc6d7459f123759cc74f
 });
 
 const gmailUsername = process.env.GMAIL_USERNAME?.trim();

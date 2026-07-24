@@ -32,11 +32,8 @@ export const authRepository = {
       data: {
         googleId: input.googleId,
         authProvider: AuthProvider.BOTH,
-<<<<<<< HEAD
         emailVerifiedAt: new Date(),
         emailVerificationRequired: false,
-=======
->>>>>>> c1e66c0b73c4c02a2d09fc6d7459f123759cc74f
         ...(input.avatarUrl ? { avatarUrl: input.avatarUrl } : {}),
       },
       include: { role: true, wallet: true },
@@ -103,42 +100,6 @@ export const authRepository = {
           authProvider: AuthProvider.GOOGLE,
           emailVerifiedAt: new Date(),
           emailVerificationRequired: false,
-          avatarUrl: input.avatarUrl,
-          roleId: memberRole.id,
-          wallet: {
-            create: {
-              balance: 0,
-            },
-          },
-        },
-        include: { role: true, wallet: true },
-      });
-    });
-  },
-
-  createGoogleMemberWithWallet: async (input: {
-    email: string;
-    passwordHash: string;
-    fullName: string;
-    googleId: string;
-    avatarUrl?: string;
-  }) => {
-    return prisma.$transaction(async (tx) => {
-      const memberRole = await tx.role.findUnique({
-        where: { name: RoleName.MEMBER },
-      });
-
-      if (!memberRole) {
-        throw new Error("MEMBER role is not configured");
-      }
-
-      return tx.user.create({
-        data: {
-          email: input.email,
-          passwordHash: input.passwordHash,
-          fullName: input.fullName,
-          googleId: input.googleId,
-          authProvider: AuthProvider.GOOGLE,
           avatarUrl: input.avatarUrl,
           roleId: memberRole.id,
           wallet: {

@@ -51,4 +51,32 @@ describe("staff swap check-in with a selected service bay", () => {
       }) }),
     }));
   });
+
+  it("does not return stations or vehicles when staff is outside the assigned shift", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-24T16:00:00.000Z")); // 23:00 in Vietnam
+    try {
+      db.stationAssignment.findMany.mockResolvedValue([{
+        stationId,
+        assignmentRole: "STAFF",
+        effectiveFrom: new Date("2026-07-01T00:00:00.000Z"),
+        effectiveTo: null,
+        shift: "Tất cả các buổi",
+      }]);
+      db.station.findMany.mockResolvedValue([]);
+      db.swapTransaction.findFirst.mockResolvedValue(null);
+
+      const result = await staffSwapService.getContext(staffId, "STAFF");
+
+      expect(result).toMatchObject({
+        stations: [],
+        assignmentState: "OUTSIDE_SHIFT",
+      });
+      expect(db.station.findMany).toHaveBeenCalledWith(expect.objectContaining({
+        where: { id: { in: [] }, status: "ACTIVE" },
+      }));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

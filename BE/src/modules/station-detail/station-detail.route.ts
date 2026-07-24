@@ -21,6 +21,7 @@ stationDetailRouter.get("/inventory", validate({ params: v.stationParamSchema, q
 stationDetailRouter.patch("/inventory/:batteryId", validate({ params: v.batteryParamSchema, body: v.inventoryActionSchema }), c.updateInventory);
 stationDetailRouter.get("/inventory/:batteryId/history", validate({ params: v.batteryParamSchema }), c.inventoryHistory);
 stationDetailRouter.get("/bookings", validate({ params: v.stationParamSchema, query: v.bookingsQuerySchema }), c.bookings);
+stationDetailRouter.patch("/bookings/:bookingId/cancel", validate({ params: v.bookingParamSchema, body: v.cancelBookingSchema }), c.cancelBooking);
 stationDetailRouter.get("/assignment-candidates", validate({ params: v.stationParamSchema }), c.assignmentCandidates);
 stationDetailRouter.get("/assignments", validate({ params: v.stationParamSchema }), c.assignments);
 stationDetailRouter.post("/assignments", validate({ params: v.stationParamSchema, body: v.createAssignmentSchema }), c.createAssignment);

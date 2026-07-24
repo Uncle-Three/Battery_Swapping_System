@@ -13,6 +13,6 @@ export const staffSwapController = {
   inspect: (async (req, res) => res.json({ success: true, data: await staffSwapService.inspect(String(req.params.id), req.user!.id, req.user!.role, req.body) })) satisfies RequestHandler,
   assign: (async (req, res) => res.json({ success: true, data: await staffSwapService.assignReplacement(String(req.params.id), req.user!.id, req.user!.role, req.body.serialNumber) })) satisfies RequestHandler,
   install: (async (req, res) => res.json({ success: true, data: await staffSwapService.install(String(req.params.id), req.user!.id, req.user!.role, req.body.serialNumber) })) satisfies RequestHandler,
-  collectPayment: (async (req, res) => res.json({ success: true, data: await staffSwapService.collectPayment(String(req.params.id), req.user!.id, req.user!.role) })) satisfies RequestHandler,
+  collectPayment: (async (req, res) => res.json({ success: true, data: await staffSwapService.collectPayment(String(req.params.id), req.user!.id, req.user!.role, req.body?.paymentMethod) })) satisfies RequestHandler,
   rollback: (async (req, res) => res.json({ success: true, data: await staffSwapService.rollback(String(req.params.id), req.user!.id, req.user!.role, req.body.reason) })) satisfies RequestHandler,
 };

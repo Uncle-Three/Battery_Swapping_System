@@ -1,9 +1,5 @@
 import { authRepository } from "./auth.repository";
-<<<<<<< HEAD
 import type { GoogleLoginInput, LoginInput, RegisterInput, ResendVerificationInput, VerifyEmailInput } from "./auth.types";
-=======
-import type { GoogleLoginInput, LoginInput, RegisterInput } from "./auth.types";
->>>>>>> c1e66c0b73c4c02a2d09fc6d7459f123759cc74f
 import { ConflictError } from "../../common/errors/conflict-error";
 import { AppError } from "../../common/errors/app-error";
 import { UnauthorizedError } from "../../common/errors/unauthorized-error";
@@ -15,13 +11,10 @@ import { AuthProvider, UserStatus } from "@prisma/client";
 import { OAuth2Client } from "google-auth-library";
 import { randomUUID } from "crypto";
 import { env } from "../../config/env";
-<<<<<<< HEAD
 import { createHash, randomBytes } from "node:crypto";
 import { BadRequestError } from "../../common/errors/bad-request-error";
 import { EmailVerificationRequiredError } from "../../common/errors/email-verification-required-error";
 import { emailService } from "../email/email.service";
-=======
->>>>>>> c1e66c0b73c4c02a2d09fc6d7459f123759cc74f
 
 const normalizeEmail = (email: string): string => email.trim().toLowerCase();
 const dummyPasswordHash = "$2b$12$LQv3c1yqBWVHxkd0LQ4YCO4QOq7O8jT5BltjLw9hV8N77N8DVCcS";
@@ -95,7 +88,6 @@ const createSessionResponse = async (
   };
 };
 
-<<<<<<< HEAD
 export const createAuthService = (dependencies: AuthServiceDependencies) => {
   const issueVerificationEmail = async (user: { id: string; email: string; fullName: string }) => {
     const token = dependencies.createVerificationToken();
@@ -111,9 +103,6 @@ export const createAuthService = (dependencies: AuthServiceDependencies) => {
   };
 
   return ({
-=======
-export const createAuthService = (dependencies: AuthServiceDependencies) => ({
->>>>>>> c1e66c0b73c4c02a2d09fc6d7459f123759cc74f
   login: async (input: LoginInput, context: AuthRequestContext = {}) => {
     const email = normalizeEmail(input.email);
     const user = await dependencies.repository.findUserByEmail(email);
@@ -132,13 +121,10 @@ export const createAuthService = (dependencies: AuthServiceDependencies) => ({
       throw new UnauthorizedError("Invalid credentials");
     }
 
-<<<<<<< HEAD
     if (user.emailVerificationRequired === true && !user.emailVerifiedAt) {
       throw new EmailVerificationRequiredError();
     }
 
-=======
->>>>>>> c1e66c0b73c4c02a2d09fc6d7459f123759cc74f
     return createSessionResponse(user, dependencies, context);
   },
 
@@ -187,13 +173,10 @@ export const createAuthService = (dependencies: AuthServiceDependencies) => ({
       throw new UnauthorizedError("Account is not active");
     }
 
-<<<<<<< HEAD
     if (!user.emailVerifiedAt) {
       user = await dependencies.repository.markEmailVerified(user.id, dependencies.now());
     }
 
-=======
->>>>>>> c1e66c0b73c4c02a2d09fc6d7459f123759cc74f
     if (user.authProvider === AuthProvider.LOCAL && !user.googleId) {
       user = await dependencies.repository.linkGoogleAccount(user.id, { googleId, avatarUrl });
     }

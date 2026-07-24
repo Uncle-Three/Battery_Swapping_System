@@ -54,7 +54,7 @@ export const lookupVehicle = async (
       hasActiveOwner: false,
       isOwnedByCurrentUser: false,
       transferRequestAllowed: false,
-      message: "Vehicle not found. You can register it as a new vehicle.",
+      message: "Không tìm thấy thông tin xe. Bạn có thể tiến hành đăng ký xe mới.",
     };
   }
 
@@ -88,10 +88,10 @@ export const lookupVehicle = async (
     transferRequestAllowed: hasActiveOwner && !isOwnedByCurrentUser && vehicle.ownershipStatus !== "LOCKED",
     activeTransferStatus: activeTransfer?.status,
     message: isOwnedByCurrentUser
-      ? "This vehicle is already in your account."
+      ? "Xe này đã có trong tài khoản của bạn."
       : hasActiveOwner
-      ? "This vehicle is already linked to another account. Please recover the previous account or submit an ownership transfer request."
-      : "Vehicle found. You can register it.",
+      ? "Xe này đã liên kết với một tài khoản khác. Vui lòng khôi phục tài khoản cũ hoặc gửi yêu cầu chuyển quyền sở hữu."
+      : "Đã tìm thấy thông tin xe. Bạn có thể tiếp tục đăng ký.",
   };
 };
 
@@ -99,22 +99,22 @@ export const lookupVehicle = async (
 
 export const createTransferRequest = async (requestedOwnerId: string, input: CreateTransferRequestInput) => {
   const vehicle = await repo.findVehicleById(input.vehicleId);
-  if (!vehicle) throw new NotFoundError("Vehicle not found");
-  if (vehicle.isDeleted) throw new NotFoundError("Vehicle not found");
+  if (!vehicle) throw new NotFoundError("Không tìm thấy xe trong hệ thống");
+  if (vehicle.isDeleted) throw new NotFoundError("Không tìm thấy xe trong hệ thống");
 
   // Prevent owner from creating a transfer for their own vehicle via this flow
   if (vehicle.userId === requestedOwnerId) {
-    throw new ConflictError("This vehicle is already in your account.");
+    throw new ConflictError("Xe này đã có trong tài khoản của bạn.");
   }
 
   if (vehicle.ownershipStatus === "LOCKED") {
-    throw new AppError("This vehicle is locked and cannot be transferred at this time.", 403);
+    throw new AppError("Xe này hiện đang bị khóa và không thể thực hiện chuyển quyền sở hữu vào lúc này.", 403);
   }
 
   // Prevent duplicate active requests for same vehicle + requester
   const existingRequest = await repo.findActiveTransferForVehicleAndRequester(input.vehicleId, requestedOwnerId);
   if (existingRequest) {
-    throw new ConflictError("You already have an active transfer request for this vehicle.");
+    throw new ConflictError("Bạn đã có một yêu cầu chuyển quyền sở hữu đang xử lý cho xe này.");
   }
 
   const request = await repo.createTransferRequest({
@@ -136,10 +136,10 @@ export const uploadTransferDocuments = async (
   input: UploadTransferDocumentsInput,
 ) => {
   const request = await repo.findTransferRequestById(requestId);
-  if (!request) throw new NotFoundError("Transfer request not found");
-  if (request.requestedOwnerId !== requestedOwnerId) throw new ForbiddenError("Access denied");
+  if (!request) throw new NotFoundError("Không tìm thấy yêu cầu chuyển quyền sở hữu");
+  if (request.requestedOwnerId !== requestedOwnerId) throw new ForbiddenError("Truy cập bị từ chối");
   if (request.status !== "DRAFT" && request.status !== "NEED_MORE_INFORMATION") {
-    throw new BadRequestError(`Cannot update documents when request status is ${request.status}`);
+    throw new BadRequestError(`Không thể cập nhật chứng từ khi hồ sơ đang ở trạng thái ${request.status}`);
   }
 
   return repo.updateTransferRequest(requestId, {
@@ -158,11 +158,11 @@ export const submitTransferRequest = async (
   ctx: RequestContext,
 ) => {
   const request = await repo.findTransferRequestById(requestId);
-  if (!request) throw new NotFoundError("Transfer request not found");
-  if (request.requestedOwnerId !== requestedOwnerId) throw new ForbiddenError("Access denied");
+  if (!request) throw new NotFoundError("Không tìm thấy yêu cầu chuyển quyền sở hữu");
+  if (request.requestedOwnerId !== requestedOwnerId) throw new ForbiddenError("Truy cập bị từ chối");
 
   if (!ALLOWED_TRANSITIONS[request.status].includes("PENDING")) {
-    throw new BadRequestError(`Cannot submit request with status ${request.status}`);
+    throw new BadRequestError(`Không thể gửi yêu cầu khi hồ sơ đang ở trạng thái ${request.status}`);
   }
 
   // Validate required documents based on request type
@@ -193,13 +193,13 @@ export const submitTransferRequest = async (
 
 const validateDocumentsForType = (request: { requestType: string; registrationDocumentUrl: string | null; identityDocumentUrl: string | null; purchaseContractUrl: string | null }) => {
   if (!request.registrationDocumentUrl) {
-    throw new BadRequestError("Vehicle registration document is required");
+    throw new BadRequestError("Vui lòng đính kèm Giấy đăng ký xe (Cà vẹt)");
   }
   if (!request.identityDocumentUrl) {
-    throw new BadRequestError("Identity document is required");
+    throw new BadRequestError("Vui lòng đính kèm Giấy tờ tùy thân (CCCD/Passport)");
   }
   if (request.requestType === "USED_VEHICLE_PURCHASE" && !request.purchaseContractUrl) {
-    throw new BadRequestError("Purchase contract is required for used vehicle purchase transfers");
+    throw new BadRequestError("Vui lòng đính kèm Hợp đồng mua bán/chuyển nhượng xe");
   }
 };
 
@@ -222,14 +222,14 @@ export const getMyTransferRequests = async (userId: string, page: number, size: 
 
 export const getTransferRequestDetail = async (requestId: string, userId: string, userRole: string) => {
   const request = await repo.findTransferRequestById(requestId);
-  if (!request) throw new NotFoundError("Transfer request not found");
+  if (!request) throw new NotFoundError("Không tìm thấy yêu cầu chuyển quyền sở hữu");
 
   const isRequester = request.requestedOwnerId === userId;
   const isCurrentOwner = request.vehicle?.userId === userId;
   const isAdminOrManager = ["ADMIN", "MANAGER"].includes(userRole);
 
   if (!isRequester && !isCurrentOwner && !isAdminOrManager) {
-    throw new ForbiddenError("Access denied");
+    throw new ForbiddenError("Truy cập bị từ chối");
   }
 
   return request;
@@ -239,11 +239,11 @@ export const getTransferRequestDetail = async (requestId: string, userId: string
 
 export const cancelTransferRequest = async (requestId: string, userId: string, ctx: RequestContext) => {
   const request = await repo.findTransferRequestById(requestId);
-  if (!request) throw new NotFoundError("Transfer request not found");
-  if (request.requestedOwnerId !== userId) throw new ForbiddenError("Access denied");
+  if (!request) throw new NotFoundError("Không tìm thấy yêu cầu chuyển quyền sở hữu");
+  if (request.requestedOwnerId !== userId) throw new ForbiddenError("Truy cập bị từ chối");
 
   if (!ALLOWED_TRANSITIONS[request.status].includes("CANCELLED")) {
-    throw new BadRequestError(`Cannot cancel a request with status ${request.status}`);
+    throw new BadRequestError(`Không thể hủy yêu cầu ở trạng thái ${request.status}`);
   }
 
   const wasTransferPending = request.status === "PENDING" || request.status === "UNDER_REVIEW";
@@ -295,10 +295,10 @@ export const adminRequestMoreInformation = async (
   ctx: RequestContext,
 ) => {
   const request = await repo.findTransferRequestById(requestId);
-  if (!request) throw new NotFoundError("Transfer request not found");
+  if (!request) throw new NotFoundError("Không tìm thấy yêu cầu chuyển quyền sở hữu");
 
   if (!ALLOWED_TRANSITIONS[request.status].includes("NEED_MORE_INFORMATION")) {
-    throw new BadRequestError(`Cannot request more information for status ${request.status}`);
+    throw new BadRequestError(`Không thể yêu cầu bổ sung thông tin khi hồ sơ ở trạng thái ${request.status}`);
   }
 
   const [updated] = await Promise.all([
@@ -321,8 +321,8 @@ export const adminRequestMoreInformation = async (
     // Notify requester
     repo.createNotification({
       userId: request.requestedOwnerId,
-      title: "Additional Information Required",
-      message: `Your vehicle transfer request requires additional information: ${input.additionalInfoRequest}`,
+      title: "Yêu cầu bổ sung thông tin chứng từ",
+      message: `Yêu cầu chuyển quyền sở hữu xe của bạn cần bổ sung thêm thông tin: ${input.additionalInfoRequest}`,
       entityType: "VehicleTransferRequest",
       entityId: requestId,
     }),
@@ -341,19 +341,19 @@ export const adminApproveTransfer = async (
   ctx: RequestContext,
 ) => {
   const request = await repo.findTransferRequestById(requestId);
-  if (!request) throw new NotFoundError("Transfer request not found");
+  if (!request) throw new NotFoundError("Không tìm thấy yêu cầu chuyển quyền sở hữu");
 
   if (!ALLOWED_TRANSITIONS[request.status].includes("APPROVED")) {
-    throw new BadRequestError(`Cannot approve a request with status ${request.status}`);
+    throw new BadRequestError(`Không thể duyệt yêu cầu ở trạng thái ${request.status}`);
   }
 
   // Re-verify vehicle still belongs to expected owner (prevent race condition)
   const vehicle = await repo.findVehicleById(request.vehicleId);
-  if (!vehicle) throw new NotFoundError("Vehicle not found");
+  if (!vehicle) throw new NotFoundError("Không tìm thấy xe");
 
   if (request.currentOwnerId && vehicle.userId !== request.currentOwnerId) {
     throw new ConflictError(
-      "Vehicle ownership has changed since this request was created. Please review and reject.",
+      "Quyền sở hữu xe đã thay đổi kể từ khi tạo yêu cầu. Vui lòng kiểm tra lại và từ chối.",
     );
   }
 
@@ -430,8 +430,8 @@ export const adminApproveTransfer = async (
       data: {
         userId: newOwnerId,
         type: "VEHICLE_TRANSFER",
-        title: "Vehicle Transfer Approved",
-        message: `Your transfer request for vehicle ${vehicle.plateNumber} has been approved. The vehicle is now in your account.`,
+        title: "Yêu cầu chuyển quyền sở hữu đã được duyệt",
+        message: `Yêu cầu chuyển quyền sở hữu xe ${vehicle.plateNumber} của bạn đã được phê duyệt. Xe đã được thêm vào tài khoản của bạn.`,
         entityType: "Vehicle",
         entityId: vehicle.id,
       },
@@ -442,8 +442,8 @@ export const adminApproveTransfer = async (
         data: {
           userId: previousOwnerId,
           type: "VEHICLE_TRANSFER",
-          title: "Vehicle Transferred",
-          message: `Your vehicle ${vehicle.plateNumber} has been transferred to a new owner.`,
+          title: "Xe đã được chuyển quyền sở hữu",
+          message: `Chiếc xe ${vehicle.plateNumber} của bạn đã được chuyển quyền sở hữu sang tài khoản mới.`,
           entityType: "Vehicle",
           entityId: vehicle.id,
         },
@@ -451,7 +451,7 @@ export const adminApproveTransfer = async (
     }
   });
 
-  return { message: "Transfer approved successfully. Vehicle ownership has been updated." };
+  return { message: "Duyệt chuyển quyền sở hữu thành công. Quyền sở hữu xe đã được cập nhật." };
 };
 
 // ─── Admin: Reject Transfer ───────────────────────────────────────────────────
@@ -464,14 +464,14 @@ export const adminRejectTransfer = async (
   ctx: RequestContext,
 ) => {
   const request = await repo.findTransferRequestById(requestId);
-  if (!request) throw new NotFoundError("Transfer request not found");
+  if (!request) throw new NotFoundError("Không tìm thấy yêu cầu chuyển quyền sở hữu");
 
   if (!ALLOWED_TRANSITIONS[request.status].includes("REJECTED")) {
-    throw new BadRequestError(`Cannot reject a request with status ${request.status}`);
+    throw new BadRequestError(`Không thể từ chối yêu cầu ở trạng thái ${request.status}`);
   }
 
   if (!input.rejectionReason || !input.rejectionReason.trim()) {
-    throw new BadRequestError("Rejection reason is required");
+    throw new BadRequestError("Vui lòng nhập lý do từ chối");
   }
 
   const vehicle = await repo.findVehicleById(request.vehicleId);
@@ -501,14 +501,14 @@ export const adminRejectTransfer = async (
     }),
     repo.createNotification({
       userId: request.requestedOwnerId,
-      title: "Transfer Request Rejected",
-      message: `Your vehicle transfer request has been rejected. Reason: ${input.rejectionReason}`,
+      title: "Yêu cầu chuyển quyền sở hữu bị từ chối",
+      message: `Yêu cầu chuyển quyền sở hữu xe của bạn đã bị từ chối. Lý do: ${input.rejectionReason}`,
       entityType: "VehicleTransferRequest",
       entityId: requestId,
     }),
   ]);
 
-  return { message: "Transfer request rejected." };
+  return { message: "Đã từ chối yêu cầu chuyển quyền sở hữu." };
 };
 
 // ─── Ownership History ─────────────────────────────────────────────────────────
@@ -521,11 +521,11 @@ export const getOwnershipHistory = async (
   size: number,
 ) => {
   const vehicle = await repo.findVehicleById(vehicleId);
-  if (!vehicle) throw new NotFoundError("Vehicle not found");
+  if (!vehicle) throw new NotFoundError("Không tìm thấy xe");
 
   const isOwner = vehicle.userId === userId;
   const isAdminOrManager = ["ADMIN", "MANAGER"].includes(userRole);
-  if (!isOwner && !isAdminOrManager) throw new ForbiddenError("Access denied");
+  if (!isOwner && !isAdminOrManager) throw new ForbiddenError("Truy cập bị từ chối");
 
   const [history, total] = await repo.listOwnershipHistory(vehicleId, page, size);
 

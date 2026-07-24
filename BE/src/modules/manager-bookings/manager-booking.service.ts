@@ -7,6 +7,7 @@ import { AppError } from "../../common/errors/app-error";
 import type { ProposeRescheduleInput } from "./manager-booking.validation";
 import { Roles } from "../../constants/roles";
 import { emailService } from "../email/email.service";
+import { findAdminBookingCancellation } from "../bookings/booking-cancellation";
 
 const assertStationScope = async (managerId: string, role: string, stationId: string) => {
   if (role === Roles.ADMIN) return;
@@ -64,7 +65,10 @@ const getById = async (id: string, managerId: string, role: string) => {
   });
   if (!booking) throw new NotFoundError("Booking not found");
   await assertStationScope(managerId, role, booking.stationId);
-  return booking;
+  const cancellation = booking.status === BookingStatus.CANCELLED
+    ? await findAdminBookingCancellation(id)
+    : null;
+  return { ...booking, cancellation };
 };
 
 const bookingEmailBase = (booking: {
@@ -101,14 +105,10 @@ const approve = async (id: string, managerId: string, role: string) => {
   }
 
   const updated = await prisma.$transaction(async (tx) => {
-    const reservationExpiry = new Date("2099-12-31T23:59:59Z");
     const approved = await tx.booking.update({
       where: { id },
-      data: { status: BookingStatus.APPROVED, approvedById: managerId, approvedAt: new Date(), rejectionReason: null, expiryTime: reservationExpiry },
+      data: { status: BookingStatus.APPROVED, approvedById: managerId, approvedAt: new Date(), rejectionReason: null },
     });
-    await tx.slotReservation.updateMany({ where: { bookingId: id, status: ReservationStatus.ACTIVE }, data: { expiresAt: reservationExpiry } });
-    await tx.batteryReservation.updateMany({ where: { bookingId: id, status: ReservationStatus.ACTIVE }, data: { expiresAt: reservationExpiry } });
-    await tx.bayReservation.updateMany({ where: { bookingId: id, status: ReservationStatus.ACTIVE }, data: { expiresAt: reservationExpiry } });
     await tx.bookingApprovalHistory.create({ data: { bookingId: id, managerId, action: BookingApprovalAction.APPROVED, beforeStatus: booking.status, afterStatus: BookingStatus.APPROVED } });
     await tx.notification.create({
       data: {

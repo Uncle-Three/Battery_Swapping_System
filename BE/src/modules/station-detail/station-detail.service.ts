@@ -1,4 +1,11 @@
+import {
+  BatteryOperationalStatus,
+  BayTimeSlotStatus,
+  BookingStatus,
+  ReservationStatus,
+} from "@prisma/client";
 import { prisma } from "../../config/database";
+import { batteryRepository } from "../batteries/battery.repository";
 import { BadRequestError } from "../../common/errors/bad-request-error";
 import { ConflictError } from "../../common/errors/conflict-error";
 import { NotFoundError } from "../../common/errors/not-found-error";
@@ -10,6 +17,21 @@ const ensureStation = async (stationId: string) => {
 };
 const audit = (adminId: string, stationId: string, action: string, entityType: string, entityId: string, before?: unknown, after?: unknown) => prisma.auditLog.create({ data: { adminId, stationId, actorRole: "ADMIN", action, entityType, entityId, before: before as never, after: after as never } });
 const dayBounds = (date = new Date()) => { const start = new Date(date); start.setHours(0, 0, 0, 0); const end = new Date(start); end.setDate(end.getDate() + 1); return { start, end }; };
+const batteryStationScope = (stationId: string) => ({
+  OR: [
+    { stationId },
+    {
+      stationId: null,
+      operationalStatus: BatteryOperationalStatus.INSTALLED,
+      batteryOutTransactions: { some: { stationId } },
+    },
+    {
+      stationId: null,
+      currentVehicleId: null,
+      batteryInTransactions: { some: { stationId } },
+    },
+  ],
+});
 
 export const stationDetailService = {
   detail: async (stationId: string) => ensureStation(stationId),
@@ -35,7 +57,108 @@ export const stationDetailService = {
   createSlot: async (stationId: string, input: any, adminId: string) => { const station = await ensureStation(stationId); const bay = await prisma.serviceBay.findFirst({ where: { id: input.bayId, stationId } }); if (!bay) throw new NotFoundError("Service bay not found"); if (station.openingTime && input.startTime < station.openingTime || station.closingTime && input.endTime > station.closingTime) throw new BadRequestError("Slot must be inside station operating hours"); const { start, end } = dayBounds(input.date); const overlap = await prisma.replacementSlot.findFirst({ where: { bayId: input.bayId, date: { gte: start, lt: end }, startTime: { lt: input.endTime }, endTime: { gt: input.startTime }, status: { notIn: ["CANCELLED"] } } }); if (overlap) throw new ConflictError("This bay already has an overlapping slot"); const item = await prisma.replacementSlot.create({ data: { ...input, stationId } }); await audit(adminId, stationId, "CREATE_REPLACEMENT_SLOT", "ReplacementSlot", item.id, undefined, item); return item; },
   updateSlot: async (stationId: string, slotId: string, input: any, adminId: string) => { const station = await ensureStation(stationId); const before = await prisma.replacementSlot.findFirst({ where: { id: slotId, stationId } }); if (!before) throw new NotFoundError("Replacement slot not found"); if ((before.bookedCount > 0 || before.reservedCount > 0) && (input.date || input.startTime || input.endTime || input.bayId)) throw new ConflictError("Slots with active bookings require rescheduling"); const next = { ...before, ...input }; if (next.startTime >= next.endTime) throw new BadRequestError("Start time must be earlier than end time"); if (station.openingTime && next.startTime < station.openingTime || station.closingTime && next.endTime > station.closingTime) throw new BadRequestError("Slot must be inside station operating hours"); const { start, end } = dayBounds(next.date); const overlap = await prisma.replacementSlot.findFirst({ where: { id: { not: slotId }, bayId: next.bayId, date: { gte: start, lt: end }, startTime: { lt: next.endTime }, endTime: { gt: next.startTime }, status: { notIn: ["CANCELLED"] } } }); if (overlap) throw new ConflictError("This bay already has an overlapping slot"); const item = await prisma.replacementSlot.update({ where: { id: slotId }, data: input }); await audit(adminId, stationId, "UPDATE_REPLACEMENT_SLOT", "ReplacementSlot", slotId, before, item); return item; },
   deleteSlot: async (stationId: string, slotId: string, adminId: string) => { await ensureStation(stationId); const before = await prisma.replacementSlot.findFirst({ where: { id: slotId, stationId } }); if (!before) throw new NotFoundError("Replacement slot not found"); if (before.bookedCount > 0 || before.reservedCount > 0) throw new ConflictError("Cannot delete a slot containing active bookings"); await prisma.replacementSlot.delete({ where: { id: slotId } }); await audit(adminId, stationId, "DELETE_REPLACEMENT_SLOT", "ReplacementSlot", slotId, before); return { success: true }; },
-  inventory: async (stationId: string, query: any) => { await ensureStation(stationId); const where: any = { stationId }; if (query.status) where.operationalStatus = query.status; if (query.safetyState) where.safetyState = query.safetyState; if (query.search) where.OR = [{ batteryCode: { contains: query.search, mode: "insensitive" } }, { serialNumber: { contains: query.search, mode: "insensitive" } }]; const [items, total] = await Promise.all([prisma.battery.findMany({ where, include: { batteryType: { include: { compatibilities: { where: { active: true }, include: { vehicleModel: true } } } }, reservations: { where: { status: "ACTIVE" }, take: 1 }, inspections: { orderBy: { createdAt: "desc" }, take: 1 } }, orderBy: { updatedAt: "desc" }, skip: (query.page - 1) * query.limit, take: query.limit }), prisma.battery.count({ where })]); return { items, total, page: query.page, limit: query.limit }; },
+  inventory: async (stationId: string, query: any) => {
+    await ensureStation(stationId);
+    const filters: any[] = [batteryStationScope(stationId)];
+    const where: any = { AND: filters };
+    if (query.status) where.operationalStatus = query.status;
+    if (query.safetyState) where.safetyState = query.safetyState;
+    if (query.batteryType) {
+      filters.push({
+        OR: [
+          { type: { contains: query.batteryType, mode: "insensitive" } },
+          { batteryTypeId: query.batteryType },
+          { batteryType: { is: { code: { contains: query.batteryType, mode: "insensitive" } } } },
+        ],
+      });
+    }
+    if (query.vehicleModel) {
+      where.batteryType = {
+        is: {
+          compatibilities: {
+            some: {
+              active: true,
+              vehicleModel: {
+                is: {
+                  name: { contains: query.vehicleModel, mode: "insensitive" },
+                },
+              },
+            },
+          },
+        },
+      };
+    }
+    if (query.search) {
+      filters.push({
+        OR: [
+          { batteryCode: { contains: query.search, mode: "insensitive" } },
+          { serialNumber: { contains: query.search, mode: "insensitive" } },
+        ],
+      });
+    }
+    const [items, total] = await Promise.all([
+      prisma.battery.findMany({
+        where,
+        include: {
+          batteryType: {
+            include: {
+              compatibilities: {
+                where: { active: true },
+                include: { vehicleModel: true },
+              },
+            },
+          },
+          reservations: { where: { status: "ACTIVE" }, take: 1 },
+          inspections: { orderBy: { createdAt: "desc" }, take: 1 },
+          vehicleAssignments: {
+            where: { active: true },
+            orderBy: { assignedAt: "desc" },
+            take: 1,
+            include: {
+              vehicle: {
+                include: {
+                  user: {
+                    select: {
+                      id: true,
+                      fullName: true,
+                      email: true,
+                      phone: true,
+                    },
+                  },
+                  vehicleModel: {
+                    select: {
+                      manufacturer: true,
+                      name: true,
+                      modelYear: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        orderBy: { updatedAt: "desc" },
+        skip: (query.page - 1) * query.limit,
+        take: query.limit,
+      }),
+      prisma.battery.count({ where }),
+    ]);
+
+    for (const item of items) {
+      if (item.batteryType && (!item.batteryType.compatibilities || item.batteryType.compatibilities.length === 0)) {
+        await batteryRepository.findBatteryTypeById(item.batteryType.id);
+        const refreshed = await prisma.batteryType.findUnique({
+          where: { id: item.batteryType.id },
+          include: { compatibilities: { where: { active: true }, include: { vehicleModel: true } } },
+        });
+        if (refreshed) {
+          item.batteryType = refreshed as any;
+        }
+      }
+    }
+
+    return { items, total, page: query.page, limit: query.limit };
+  },
   updateInventory: async (stationId: string, batteryId: string, input: any, adminId: string) => {
     await ensureStation(stationId);
     const isObjectId = /^[0-9a-fA-F]{24}$/.test(batteryId);
@@ -76,7 +199,7 @@ export const stationDetailService = {
 
     const targetBatteryId = battery.id;
     const nextStationId = input.action === "TRANSFER" ? input.targetStationId : stationId;
-    const nextStatus = input.action === "INSPECTION_REQUIRED" ? "INSPECTION_REQUIRED" : input.action === "MAINTENANCE" ? "MAINTENANCE" : battery.operationalStatus;
+    const nextStatus = input.action === "INSPECTION_REQUIRED" ? "INSPECTION_REQUIRED" : input.action === "MAINTENANCE" ? "MAINTENANCE" : (input.action === "DELETE" || input.action === "RETIRE") ? "RETIRED" : battery.operationalStatus;
     const item = await prisma.$transaction(async (tx) => {
       const updated = await tx.battery.update({ where: { id: targetBatteryId }, data: { stationId: nextStationId, operationalStatus: nextStatus } });
       await tx.batteryLifecycleEvent.create({ data: { batteryId: targetBatteryId, actorId: adminId, eventType: `STATION_INVENTORY_${input.action}`, fromStatus: battery.operationalStatus, toStatus: nextStatus, safetyState: battery.safetyState, reason: input.reason, snapshot: { fromStationId: battery.stationId, toStationId: nextStationId } } });
@@ -85,11 +208,164 @@ export const stationDetailService = {
     await audit(adminId, stationId, `STATION_INVENTORY_${input.action}`, "Battery", targetBatteryId, battery, item);
     return item;
   },
-  inventoryHistory: async (stationId: string, batteryId: string) => { await ensureStation(stationId); const battery = await prisma.battery.findFirst({ where: { id: batteryId, stationId } }); if (!battery) throw new NotFoundError("Battery is not stored at this station"); return prisma.batteryLifecycleEvent.findMany({ where: { batteryId }, include: { actor: { select: { id: true, fullName: true, email: true } } }, orderBy: { createdAt: "desc" } }); },
-  bookings: async (stationId: string, query: any) => { await ensureStation(stationId); const where: any = { stationId }; if (query.status) where.status = query.status; if (query.from || query.to) where.scheduledStart = { ...(query.from ? { gte: query.from } : {}), ...(query.to ? { lte: query.to } : {}) }; if (query.search) { where.OR = [{ user: { fullName: { contains: query.search, mode: "insensitive" } } }, { vehicle: { plateNumber: { contains: query.search, mode: "insensitive" } } }]; if (/^[0-9a-fA-F]{24}$/.test(query.search)) { where.OR.push({ id: query.search }); } } const [items, total] = await Promise.all([prisma.booking.findMany({ where, include: { user: { select: { id: true, fullName: true, email: true } }, vehicle: true, battery: true, serviceBay: true, slot: true, approvalHistory: { orderBy: { createdAt: "desc" }, take: 1 } }, orderBy: { createdAt: "desc" }, skip: (query.page - 1) * query.limit, take: query.limit }), prisma.booking.count({ where })]); return { items, total, page: query.page, limit: query.limit }; },
-  assignments: async (stationId: string) => { await ensureStation(stationId); return prisma.stationAssignment.findMany({ where: { stationId }, include: { user: { select: { id: true, fullName: true, email: true, phone: true, role: { select: { name: true } } } } }, orderBy: { createdAt: "desc" } }); },
-  assignmentCandidates: async (stationId: string) => { await ensureStation(stationId); return prisma.user.findMany({ where: { status: "ACTIVE", role: { name: { in: ["MANAGER", "STAFF", "TECHNICIAN"] } } }, select: { id: true, fullName: true, email: true, role: { select: { name: true } } }, orderBy: { fullName: "asc" } }); },
-  createAssignment: async (stationId: string, input: any, adminId: string) => { await ensureStation(stationId); const user = await prisma.user.findUnique({ where: { id: input.userId }, include: { role: true } }); if (!user) throw new NotFoundError("User not found"); if (user.role.name !== input.assignmentRole) throw new BadRequestError(`User role must be ${input.assignmentRole}`); if (input.shift) { const conflict = await prisma.stationAssignment.findFirst({ where: { userId: input.userId, shift: input.shift, active: true, stationId: { not: stationId } } }); if (conflict) throw new ConflictError("User already has an active assignment in this shift at another station"); } const existing = await prisma.stationAssignment.findFirst({ where: { stationId, userId: input.userId, assignmentRole: input.assignmentRole } }); const item = existing ? await prisma.stationAssignment.update({ where: { id: existing.id }, data: { ...input, active: true, effectiveFrom: input.effectiveFrom ?? new Date(), effectiveTo: input.effectiveTo ?? null } }) : await prisma.stationAssignment.create({ data: { ...input, stationId, active: true, effectiveFrom: input.effectiveFrom ?? new Date() } }); await audit(adminId, stationId, "ASSIGN_STATION_STAFF", "StationAssignment", item.id, existing, item); return item; },
+  inventoryHistory: async (stationId: string, batteryId: string) => { await ensureStation(stationId); const battery = await prisma.battery.findFirst({ where: { id: batteryId, ...batteryStationScope(stationId) } }); if (!battery) throw new NotFoundError("Battery is not associated with this station"); return prisma.batteryLifecycleEvent.findMany({ where: { batteryId }, include: { actor: { select: { id: true, fullName: true, email: true } } }, orderBy: { createdAt: "desc" } }); },
+  bookings: async (stationId: string, query: any) => {
+    await ensureStation(stationId);
+    const where: any = { stationId };
+    if (query.status) where.status = query.status;
+    if (query.from || query.to) {
+      where.scheduledStart = {
+        ...(query.from ? { gte: query.from } : {}),
+        ...(query.to ? { lte: query.to } : {}),
+      };
+    }
+    if (query.batteryType) where.vehicle = { is: { batteryType: query.batteryType } };
+    if (query.search) {
+      where.OR = [
+        { bookingCode: { contains: query.search, mode: "insensitive" } },
+        { user: { is: { fullName: { contains: query.search, mode: "insensitive" } } } },
+        { user: { is: { email: { contains: query.search, mode: "insensitive" } } } },
+        { vehicle: { is: { name: { contains: query.search, mode: "insensitive" } } } },
+        { vehicle: { is: { model: { contains: query.search, mode: "insensitive" } } } },
+        { vehicle: { is: { plateNumber: { contains: query.search, mode: "insensitive" } } } },
+        { vehicle: { is: { batteryType: { contains: query.search, mode: "insensitive" } } } },
+      ];
+    }
+
+    const { start: todayStart, end: todayEnd } = dayBounds();
+    const [items, total, todayByStatus, batteryTypes] = await Promise.all([
+      prisma.booking.findMany({
+        where,
+        include: {
+          user: { select: { id: true, fullName: true, email: true } },
+          vehicle: true,
+          battery: { include: { batteryType: true } },
+          serviceBay: true,
+          slot: true,
+          transactions: {
+            orderBy: { createdAt: "desc" },
+            take: 1,
+            select: {
+              staff: { select: { id: true, fullName: true } },
+            },
+          },
+        },
+        orderBy: [{ createdAt: "desc" }],
+        skip: (query.page - 1) * query.limit,
+        take: query.limit,
+      }),
+      prisma.booking.count({ where }),
+      prisma.booking.groupBy({
+        by: ["status"],
+        where: { stationId, scheduledStart: { gte: todayStart, lt: todayEnd } },
+        _count: true,
+      }),
+      prisma.vehicle.findMany({
+        where: { bookings: { some: { stationId } }, batteryType: { not: "" } },
+        distinct: ["batteryType"],
+        select: { batteryType: true },
+        orderBy: { batteryType: "asc" },
+      }),
+    ]);
+
+    const summary = Object.fromEntries(todayByStatus.map((item) => [item.status, item._count]));
+    return {
+      items: items.map((item) => ({
+        ...item,
+        bookingCode: item.bookingCode ?? `BKG-${(item.scheduledStart ?? item.createdAt).toISOString().slice(0, 10).replaceAll("-", "")}-${item.id.slice(-8).toUpperCase()}`,
+      })),
+      total,
+      page: query.page,
+      limit: query.limit,
+      batteryTypes: batteryTypes.map((item) => item.batteryType),
+      summary: {
+        totalToday: Object.values(summary).reduce((sum: number, count) => sum + Number(count), 0),
+        pending: (summary.CREATED ?? 0) + (summary.PENDING_APPROVAL ?? 0),
+        confirmed: (summary.APPROVED ?? 0) + (summary.RESCHEDULED ?? 0),
+        checkedIn: summary.CHECKED_IN ?? 0,
+        completed: summary.COMPLETED ?? 0,
+        cancelled: summary.CANCELLED ?? 0,
+      },
+    };
+  },
+  cancelBooking: async (
+    stationId: string,
+    bookingId: string,
+    input: { reason: string },
+    adminId: string,
+  ) => {
+    await ensureStation(stationId);
+    const before = await prisma.booking.findFirst({
+      where: { id: bookingId, stationId },
+    });
+    if (!before) throw new NotFoundError("Không tìm thấy lịch đặt tại trạm này.");
+    const cancellableStatuses: BookingStatus[] = [
+      BookingStatus.CREATED,
+      BookingStatus.PENDING_APPROVAL,
+      BookingStatus.APPROVED,
+      BookingStatus.RESCHEDULE_PROPOSED,
+      BookingStatus.RESCHEDULED,
+    ];
+    if (!cancellableStatuses.includes(before.status)) {
+      throw new ConflictError("Chỉ có thể hủy lịch chưa check-in và chưa hoàn tất.");
+    }
+
+    const cancelled = await prisma.$transaction(async (tx) => {
+      await Promise.all([
+        tx.slotReservation.updateMany({
+          where: { bookingId, status: ReservationStatus.ACTIVE },
+          data: { status: ReservationStatus.RELEASED },
+        }),
+        tx.bayReservation.updateMany({
+          where: { bookingId, status: ReservationStatus.ACTIVE },
+          data: { status: ReservationStatus.RELEASED },
+        }),
+        tx.batteryReservation.updateMany({
+          where: { bookingId, status: ReservationStatus.ACTIVE },
+          data: { status: ReservationStatus.RELEASED },
+        }),
+      ]);
+      const bayTimeSlot = await tx.bayTimeSlot.findUnique({ where: { bookingId } });
+      if (bayTimeSlot) {
+        await tx.bayTimeSlot.update({
+          where: { id: bayTimeSlot.id },
+          data: {
+            status: bayTimeSlot.endAt > new Date()
+              ? BayTimeSlotStatus.AVAILABLE
+              : BayTimeSlotStatus.EXPIRED,
+            bookingId: null,
+            cooldownEndsAt: null,
+          },
+        });
+      }
+      if (before.batteryId) {
+        await tx.battery.updateMany({
+          where: {
+            id: before.batteryId,
+            operationalStatus: BatteryOperationalStatus.RESERVED,
+          },
+          data: { operationalStatus: BatteryOperationalStatus.AVAILABLE },
+        });
+      }
+      return tx.booking.update({
+        where: { id: bookingId },
+        data: { status: BookingStatus.CANCELLED },
+      });
+    });
+    await audit(
+      adminId,
+      stationId,
+      "CANCEL_STATION_BOOKING",
+      "Booking",
+      bookingId,
+      before,
+      { ...cancelled, cancellationReason: input.reason },
+    );
+    return cancelled;
+  },
+  assignments: async (stationId: string) => { await ensureStation(stationId); return prisma.stationAssignment.findMany({ where: { stationId, assignmentRole: "STAFF" }, include: { user: { select: { id: true, fullName: true, email: true, phone: true, role: { select: { name: true } } } } }, orderBy: { createdAt: "desc" } }); },
+  assignmentCandidates: async (stationId: string) => { await ensureStation(stationId); return prisma.user.findMany({ where: { status: "ACTIVE", role: { name: "STAFF" } }, select: { id: true, fullName: true, email: true, role: { select: { name: true } } }, orderBy: { fullName: "asc" } }); },
+  createAssignment: async (stationId: string, input: any, adminId: string) => { await ensureStation(stationId); const user = await prisma.user.findUnique({ where: { id: input.userId }, include: { role: true } }); if (!user) throw new NotFoundError("User not found"); if (user.role.name !== "STAFF") throw new BadRequestError("User role must be STAFF"); if (input.shift) { const conflict = await prisma.stationAssignment.findFirst({ where: { userId: input.userId, shift: input.shift, active: true, stationId: { not: stationId } } }); if (conflict) throw new ConflictError("User already has an active assignment in this shift at another station"); } const existing = await prisma.stationAssignment.findFirst({ where: { stationId, userId: input.userId, assignmentRole: "STAFF" } }); const data = { ...input, assignmentRole: "STAFF" as const }; const item = existing ? await prisma.stationAssignment.update({ where: { id: existing.id }, data: { ...data, active: true, effectiveFrom: input.effectiveFrom ?? new Date(), effectiveTo: input.effectiveTo ?? null } }) : await prisma.stationAssignment.create({ data: { ...data, stationId, active: true, effectiveFrom: input.effectiveFrom ?? new Date() } }); await audit(adminId, stationId, "ASSIGN_STATION_STAFF", "StationAssignment", item.id, existing, item); return item; },
   updateAssignment: async (stationId: string, assignmentId: string, input: any, adminId: string) => { await ensureStation(stationId); const before = await prisma.stationAssignment.findFirst({ where: { id: assignmentId, stationId } }); if (!before) throw new NotFoundError("Assignment not found"); const item = await prisma.stationAssignment.update({ where: { id: assignmentId }, data: { ...input, ...(input.active === false ? { effectiveTo: input.effectiveTo ?? new Date() } : {}) } }); await audit(adminId, stationId, "UPDATE_STATION_ASSIGNMENT", "StationAssignment", assignmentId, before, item); return item; },
   deleteAssignment: async (stationId: string, assignmentId: string, adminId: string) => { await ensureStation(stationId); const before = await prisma.stationAssignment.findFirst({ where: { id: assignmentId, stationId } }); if (!before) throw new NotFoundError("Assignment not found"); await prisma.stationAssignment.delete({ where: { id: assignmentId } }); await audit(adminId, stationId, "REMOVE_STATION_STAFF", "StationAssignment", assignmentId, before); return { success: true }; },
   maintenance: async (stationId: string, query: any) => { await ensureStation(stationId); const where: any = { stationId }; if (query.status) where.status = query.status; if (query.type) where.type = query.type; if (query.search) where.OR = [{ title: { contains: query.search, mode: "insensitive" } }, { description: { contains: query.search, mode: "insensitive" } }]; const [items, total] = await Promise.all([prisma.stationMaintenanceEvent.findMany({ where, orderBy: { createdAt: "desc" }, skip: (query.page - 1) * query.limit, take: query.limit }), prisma.stationMaintenanceEvent.count({ where })]); const userIds = [...new Set(items.flatMap((x) => [x.assignedStaffId, x.createdById]).filter(Boolean) as string[])]; const users = await prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, fullName: true } }); return { items: items.map((x) => ({ ...x, assignedStaff: users.find((u) => u.id === x.assignedStaffId) ?? null, createdBy: users.find((u) => u.id === x.createdById) ?? null })), total, page: query.page, limit: query.limit }; },

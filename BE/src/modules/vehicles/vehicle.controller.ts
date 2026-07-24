@@ -22,6 +22,25 @@ export const getMyVehicles = async (req: Request, res: Response, next: NextFunct
   }
 };
 
+export const listAllForAdmin = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { page, size, sort, search, vehicleStatus, batteryStatus, healthClassification } = req.query as unknown as VehicleListQuery;
+
+    const result = await vehicleService.getAllVehicles({
+      page,
+      size,
+      sort,
+      search,
+      vehicleStatus,
+      batteryStatus,
+      healthClassification,
+    });
+    res.json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const getVehicleById = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const userId = req.user!.id;

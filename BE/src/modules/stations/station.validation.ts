@@ -11,7 +11,7 @@ export const stationAvailabilitySchema = z.object({
 }).refine((data) => data.endsAt > data.startsAt, { message: "endsAt must be after startsAt", path: ["endsAt"] });
 
 export const bookingScheduleSchema = z.object({
-  vehicleId: z.string().regex(/^[a-f\d]{24}$/i, "Invalid MongoDB ObjectId"),
+  vehicleId: z.string().regex(/^[a-f\d]{24}$/i, "Invalid MongoDB ObjectId").optional(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must use YYYY-MM-DD format"),
   durationMinutes: z.coerce.number().int().refine((value) => value === 30 || value === 60, "Duration must be 30 or 60 minutes"),
 });

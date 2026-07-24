@@ -1,9 +1,10 @@
 import {
-  BatteryOperationalStatus, BookingStatus, InvoiceStatus, NotificationType,
+  BatteryOperationalStatus, BayTimeSlotStatus, BookingStatus, InvoiceStatus, NotificationType,
   PaymentMethod, PaymentStatus, ReplacementRequestStatus, ReservationStatus, SwapStatus,
 } from "@prisma/client";
 import { prisma } from "../../config/database";
 import { Roles } from "../../constants/roles";
+import { calculateBaySlotCooldownEndsAt } from "../../common/utils/bay-slot-cooldown";
 
 export const paymentRepository = {
   // ── Wallet ────────────────────────────────────────────────────────────────
@@ -126,11 +127,28 @@ export const paymentRepository = {
     });
   },
 
+  failPendingVNPayBookingPayments: async (swapId: string) => {
+    return prisma.paymentTransaction.updateMany({
+      where: {
+        swapTransactionId: swapId,
+        paymentMethod: PaymentMethod.VNPAY,
+        status: PaymentStatus.PENDING,
+      },
+      data: { status: PaymentStatus.FAILED },
+    });
+  },
+
   /** Confirm a booking payment and finalize the battery replacement atomically. */
   confirmVNPayBookingPayment: async (txnId: string, amount: number) => {
     return prisma.$transaction(async (tx) => {
       const transaction = await tx.paymentTransaction.findUnique({ where: { id: txnId } });
-      if (!transaction?.swapTransactionId || transaction.status !== PaymentStatus.PENDING) return { completed: false };
+      if (
+        !transaction?.swapTransactionId
+        || (
+          transaction.status !== PaymentStatus.PENDING
+          && transaction.status !== PaymentStatus.FAILED
+        )
+      ) return { completed: false };
 
       const swap = await tx.swapTransaction.findUnique({
         where: { id: transaction.swapTransactionId },
@@ -140,12 +158,25 @@ export const paymentRepository = {
         throw new Error("Swap is missing data required for payment completion");
       }
       if (swap.workflowStatus !== SwapStatus.PAYMENT_PENDING) return { completed: false };
+      const completedAt = new Date();
 
       const claimed = await tx.paymentTransaction.updateMany({
-        where: { id: txnId, status: PaymentStatus.PENDING },
+        where: {
+          id: txnId,
+          status: { in: [PaymentStatus.PENDING, PaymentStatus.FAILED] },
+        },
         data: { status: PaymentStatus.SUCCESS },
       });
       if (claimed.count !== 1) return { completed: false };
+      await tx.paymentTransaction.updateMany({
+        where: {
+          swapTransactionId: swap.id,
+          id: { not: txnId },
+          paymentMethod: PaymentMethod.VNPAY,
+          status: PaymentStatus.PENDING,
+        },
+        data: { status: PaymentStatus.FAILED },
+      });
 
       await tx.invoice.update({ where: { transactionId: swap.id }, data: { amount, paymentMethod: PaymentMethod.VNPAY, status: InvoiceStatus.PAID } });
       const activeReplacementAssignment = await tx.vehicleBatteryAssignment.findFirst({
@@ -155,9 +186,68 @@ export const paymentRepository = {
         await tx.vehicleBatteryAssignment.updateMany({ where: { vehicleId: swap.vehicleId, active: true }, data: { active: false, removedAt: new Date() } });
         await tx.vehicleBatteryAssignment.create({ data: { vehicleId: swap.vehicleId, batteryId: swap.batteryOutId, assignedById: swap.staffId, active: true } });
       }
-      await tx.battery.update({ where: { id: swap.batteryOutId }, data: { operationalStatus: BatteryOperationalStatus.INSTALLED, currentVehicleId: swap.vehicleId, slotId: null, stationId: null } });
+      await tx.battery.update({
+        where: { id: swap.batteryOutId },
+        data: {
+          operationalStatus: BatteryOperationalStatus.INSTALLED,
+          currentVehicleId: swap.vehicleId,
+          slotId: null,
+          stationId: swap.stationId,
+        },
+      });
       await tx.batteryReservation.updateMany({ where: { bookingId: swap.booking.id, status: ReservationStatus.ACTIVE }, data: { status: ReservationStatus.CONSUMED } });
       await tx.booking.update({ where: { id: swap.booking.id }, data: { status: BookingStatus.COMPLETED } });
+      const bayTimeSlot = await tx.bayTimeSlot.findUnique({
+        where: { bookingId: swap.booking.id },
+        select: { id: true, bayId: true, startAt: true, endAt: true, bufferMinutes: true },
+      });
+      if (bayTimeSlot) {
+        const nextSlot = bayTimeSlot.bufferMinutes === null
+          ? await tx.bayTimeSlot.findFirst({
+            where: {
+              bayId: bayTimeSlot.bayId,
+              startAt: {
+                gte: bayTimeSlot.endAt,
+                lte: new Date(bayTimeSlot.endAt.getTime() + 720 * 60_000),
+              },
+              status: { not: BayTimeSlotStatus.CANCELLED },
+            },
+            select: { startAt: true },
+            orderBy: { startAt: "asc" },
+          })
+          : null;
+        const previousSlot = bayTimeSlot.bufferMinutes === null && !nextSlot
+          ? await tx.bayTimeSlot.findFirst({
+            where: {
+              bayId: bayTimeSlot.bayId,
+              endAt: {
+                gte: new Date(bayTimeSlot.startAt.getTime() - 720 * 60_000),
+                lte: bayTimeSlot.startAt,
+              },
+              status: { not: BayTimeSlotStatus.CANCELLED },
+            },
+            select: { endAt: true },
+            orderBy: { endAt: "desc" },
+          })
+          : null;
+        const bufferMinutes = bayTimeSlot.bufferMinutes
+          ?? Math.max(0, Math.round(
+            nextSlot
+              ? (nextSlot.startAt.getTime() - bayTimeSlot.endAt.getTime()) / 60_000
+              : (bayTimeSlot.startAt.getTime() - (previousSlot?.endAt.getTime() ?? bayTimeSlot.startAt.getTime())) / 60_000,
+          ));
+        await tx.bayTimeSlot.update({
+          where: { id: bayTimeSlot.id },
+          data: {
+            status: BayTimeSlotStatus.COMPLETED,
+            cooldownEndsAt: calculateBaySlotCooldownEndsAt(
+              completedAt,
+              bayTimeSlot.endAt,
+              bufferMinutes,
+            ),
+          },
+        });
+      }
       await tx.bayReservation.updateMany({ where: { bookingId: swap.booking.id, status: ReservationStatus.ACTIVE }, data: { status: ReservationStatus.CONSUMED } });
       await tx.vehicle.update({ where: { id: swap.vehicleId }, data: { status: "ACTIVE", currentBatteryId: swap.batteryOutId } });
       if (swap.booking.replacementRequestId) {
@@ -174,7 +264,7 @@ export const paymentRepository = {
       }
       await tx.notification.create({ data: { userId: swap.userId, type: NotificationType.PAYMENT_UPDATE, title: "Đổi pin hoàn tất", message: `Thanh toán trực tiếp ${amount.toLocaleString("vi-VN")} VND qua VNPay thành công.`, entityType: "SwapTransaction", entityId: swap.id } });
       await tx.swapStepHistory.create({ data: { swapTransactionId: swap.id, actorId: swap.staffId, fromStatus: SwapStatus.PAYMENT_PENDING, toStatus: SwapStatus.COMPLETED, data: { paymentMethod: "VNPAY", amount } } });
-      await tx.swapTransaction.update({ where: { id: swap.id }, data: { workflowStatus: SwapStatus.COMPLETED, completedAt: new Date(), status: "SUCCESS" } });
+      await tx.swapTransaction.update({ where: { id: swap.id }, data: { workflowStatus: SwapStatus.COMPLETED, completedAt, status: "SUCCESS" } });
 
       // ── Tạo phiếu bảo hành 1 năm ──────────────────────────────────────────
       const now = new Date();
@@ -207,16 +297,30 @@ export const paymentRepository = {
       });
 
       return { completed: true, bookingId: swap.booking.id, warrantyCard };
+    }, {
+      // Completing a swap updates payment, invoice, batteries, booking,
+      // reservations, lifecycle history, notifications and warranty records.
+      // MongoDB can legitimately take longer than Prisma's 5-second default.
+      maxWait: 10_000,
+      timeout: 30_000,
     });
   },
 
 
-  findBookingIdByPayment: async (txnRef: string) => {
+  findPaymentDestinationByTxnRef: async (txnRef: string) => {
     const transaction = await prisma.paymentTransaction.findFirst({
       where: { vnpTxnRef: txnRef },
-      select: { swapTransaction: { select: { bookingId: true } } },
+      select: {
+        swapTransaction: {
+          select: {
+            id: true,
+            bookingId: true,
+            workflowStatus: true,
+          },
+        },
+      },
     });
-    return transaction?.swapTransaction?.bookingId ?? null;
+    return transaction?.swapTransaction ?? null;
   },
 
   // ── Notifications ─────────────────────────────────────────────────────────

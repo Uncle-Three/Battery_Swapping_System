@@ -16,12 +16,19 @@ import { errorMiddleware } from "./common/middleware/error.middleware";
 
 export const app = express();
 
+app.disable("etag");
 app.use(helmet());
 app.use(corsOptions);
 app.set("trust proxy", env.NODE_ENV === "production" ? 1 : false);
 app.use(compression());
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true, limit: "1mb" }));
+app.use("/api", (_req, res, next) => {
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
+  next();
+});
 app.use((req, res, next) => {
   const requestId = req.header("x-request-id") ?? randomUUID();
   res.setHeader("x-request-id", requestId);

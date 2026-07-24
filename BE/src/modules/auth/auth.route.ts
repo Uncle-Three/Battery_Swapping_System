@@ -2,13 +2,8 @@ import { Router } from "express";
 import { authController } from "./auth.controller";
 import { authenticate } from "../../common/middleware/authenticate.middleware";
 import { validate } from "../../common/middleware/validate.middleware";
-<<<<<<< HEAD
 import { emailVerificationRateLimiter, loginRateLimiter, refreshRateLimiter, registerRateLimiter } from "../../common/middleware/rate-limit.middleware";
 import { googleLoginSchema, loginSchema, registerSchema, resendVerificationSchema, verifyEmailSchema } from "./auth.validation";
-=======
-import { loginRateLimiter, refreshRateLimiter, registerRateLimiter } from "../../common/middleware/rate-limit.middleware";
-import { googleLoginSchema, loginSchema, registerSchema } from "./auth.validation";
->>>>>>> c1e66c0b73c4c02a2d09fc6d7459f123759cc74f
 
 export const authRouter = Router();
 

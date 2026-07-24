@@ -46,7 +46,7 @@ export const paymentController = {
   /**
    * GET /payments/vnpay/return
    * User được VNPay redirect về sau khi thanh toán. KHÔNG cần authentication.
-   * Chỉ trả kết quả để FE hiển thị, không cập nhật DB.
+   * Xác minh kết quả và hoàn tất giao dịch nếu IPN chưa tới.
    */
   vnpayReturn: (async (req, res) => {
     const query = req.query as Record<string, string>;

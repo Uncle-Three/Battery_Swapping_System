@@ -77,6 +77,7 @@ export const RolePermissions = {
     Permissions.BOOKINGS_READ_ANY,
     Permissions.SWAPS_INITIATE,
     Permissions.SWAPS_PROCESS,
+    Permissions.NOTIFICATIONS_READ_SELF,
   ],
   [Roles.TECHNICIAN]: [
     Permissions.PROFILE_READ_SELF,
@@ -87,6 +88,7 @@ export const RolePermissions = {
     Permissions.MAINTENANCE_READ,
     Permissions.BATTERY_HEALTH_READ,
     Permissions.BATTERY_HEALTH_WRITE,
+    Permissions.NOTIFICATIONS_READ_SELF,
   ],
   [Roles.MANAGER]: [
     Permissions.PROFILE_READ_SELF,
@@ -98,6 +100,7 @@ export const RolePermissions = {
     Permissions.BATTERY_HEALTH_READ,
     Permissions.SWAPS_READ_ANY,
     Permissions.BOOKINGS_APPROVE,
+    Permissions.NOTIFICATIONS_READ_SELF,
   ],
   [Roles.ADMIN]: [PermissionWildcard],
 } as const satisfies Record<Role, readonly PermissionGrant[]>;

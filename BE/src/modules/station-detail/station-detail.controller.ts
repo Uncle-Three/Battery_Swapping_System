@@ -16,6 +16,15 @@ export const stationDetailController = {
   updateInventory: (async (req, res) => res.json({ success: true, data: await service.updateInventory(String(req.params.stationId), String(req.params.batteryId), req.body, req.user!.id) })) as RequestHandler,
   inventoryHistory: (async (req, res) => res.json({ success: true, data: await service.inventoryHistory(String(req.params.stationId), String(req.params.batteryId)) })) as RequestHandler,
   bookings: (async (req, res) => res.json({ success: true, data: await service.bookings(String(req.params.stationId), req.query) })) as RequestHandler,
+  cancelBooking: (async (req, res) => res.json({
+    success: true,
+    data: await service.cancelBooking(
+      String(req.params.stationId),
+      String(req.params.bookingId),
+      req.body,
+      req.user!.id,
+    ),
+  })) as RequestHandler,
   assignments: (async (req, res) => res.json({ success: true, data: await service.assignments(String(req.params.stationId)) })) as RequestHandler,
   assignmentCandidates: (async (req, res) => res.json({ success: true, data: await service.assignmentCandidates(String(req.params.stationId)) })) as RequestHandler,
   createAssignment: (async (req, res) => res.status(201).json({ success: true, data: await service.createAssignment(String(req.params.stationId), req.body, req.user!.id) })) as RequestHandler,

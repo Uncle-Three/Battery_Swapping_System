@@ -38,10 +38,14 @@ const replacementRequestTransitions = {
 const swapTransitions = {
   NOT_STARTED: [SwapStatus.VERIFIED, SwapStatus.FAILED],
   VERIFIED: [SwapStatus.OLD_BATTERY_REMOVED, SwapStatus.FAILED],
-  OLD_BATTERY_REMOVED: [SwapStatus.OLD_BATTERY_INSPECTED, SwapStatus.FAILED],
+  OLD_BATTERY_REMOVED: [
+    SwapStatus.OLD_BATTERY_INSPECTED,
+    SwapStatus.REPLACEMENT_ASSIGNED,
+    SwapStatus.FAILED,
+  ],
   OLD_BATTERY_INSPECTED: [SwapStatus.REPLACEMENT_ASSIGNED, SwapStatus.FAILED],
   REPLACEMENT_ASSIGNED: [SwapStatus.INSTALLED, SwapStatus.FAILED],
-  INSTALLED: [SwapStatus.PAYMENT_PENDING, SwapStatus.FAILED],
+  INSTALLED: [SwapStatus.PAYMENT_PENDING, SwapStatus.COMPLETED, SwapStatus.FAILED],
   PAYMENT_PENDING: [SwapStatus.COMPLETED, SwapStatus.FAILED],
   COMPLETED: [],
   FAILED: [SwapStatus.ROLLED_BACK],

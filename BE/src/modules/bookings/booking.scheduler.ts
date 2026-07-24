@@ -1,9 +1,10 @@
-import { BatteryOperationalStatus, BookingStatus, ReservationStatus } from "@prisma/client";
+import { BatteryOperationalStatus, BayTimeSlotStatus, BookingStatus, NotificationType, ReservationStatus } from "@prisma/client";
 import { prisma } from "../../config/database";
 
 const expirableStatuses = [
   BookingStatus.CREATED,
   BookingStatus.PENDING_APPROVAL,
+  BookingStatus.APPROVED,
   BookingStatus.RESCHEDULE_PROPOSED,
   BookingStatus.RESCHEDULED,
 ];
@@ -11,7 +12,7 @@ const expirableStatuses = [
 export const expireBookings = async (now = new Date()): Promise<number> => {
   const bookings = await prisma.booking.findMany({
     where: { expiryTime: { lte: now }, status: { in: expirableStatuses } },
-    select: { id: true },
+    select: { id: true, userId: true },
     take: 100,
   });
   for (const booking of bookings) {
@@ -27,9 +28,23 @@ export const expireBookings = async (now = new Date()): Promise<number> => {
       await tx.slotReservation.updateMany({ where: { bookingId: booking.id, status: ReservationStatus.ACTIVE }, data: { status: ReservationStatus.EXPIRED } });
       await tx.bayReservation.updateMany({ where: { bookingId: booking.id, status: ReservationStatus.ACTIVE }, data: { status: ReservationStatus.EXPIRED } });
       await tx.batteryReservation.updateMany({ where: { bookingId: booking.id, status: ReservationStatus.ACTIVE }, data: { status: ReservationStatus.EXPIRED } });
+      await tx.bayTimeSlot.updateMany({
+        where: { bookingId: booking.id, status: BayTimeSlotStatus.RESERVED },
+        data: { status: BayTimeSlotStatus.EXPIRED },
+      });
       await tx.battery.updateMany({
         where: { id: { in: batteryReservations.map((reservation) => reservation.batteryId) }, operationalStatus: BatteryOperationalStatus.RESERVED },
         data: { operationalStatus: BatteryOperationalStatus.AVAILABLE },
+      });
+      await tx.notification.create({
+        data: {
+          userId: booking.userId,
+          type: NotificationType.BOOKING_UPDATE,
+          title: "Đã hết thời gian giữ chỗ",
+          message: "Bạn chưa check-in trước khi hết thời gian giữ chỗ sau giờ hẹn, nên lịch và tài nguyên đã được giải phóng.",
+          entityType: "Booking",
+          entityId: booking.id,
+        },
       });
     });
   }

@@ -2,7 +2,6 @@ export type EmailMessage = {
   to: string;
   subject: string;
   text: string;
-<<<<<<< HEAD
   html?: string;
 };
 
@@ -25,9 +24,6 @@ export type PaymentEmailData = {
   amount: number;
   paymentUrl?: string | null;
   reason?: string | null;
-=======
-  html: string;
->>>>>>> c1e66c0b73c4c02a2d09fc6d7459f123759cc74f
 };
 
 export type BookingEmailData = {
@@ -108,8 +104,3 @@ export type SwapSummaryReportEmailData = {
   paymentMethod: string;
   completedAt?: Date | string | null;
 };
-<<<<<<< HEAD
-=======
-
-
->>>>>>> c1e66c0b73c4c02a2d09fc6d7459f123759cc74f

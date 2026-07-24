@@ -32,6 +32,21 @@ describe("booking validation", () => {
     }).success).toBe(true);
   });
 
+  it("accepts grouped time selection without a user-selected bay", () => {
+    const startAt = new Date(Date.now() + 5 * 60 * 60_000);
+    startAt.setMinutes(0, 0, 0);
+    const result = createBookingSchema.safeParse({
+      vehicleId: id,
+      stationId: id,
+      startAt,
+      endAt: new Date(startAt.getTime() + 60 * 60_000),
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.scheduledStart).toEqual(startAt);
+    }
+  });
+
   it("rejects past or inverted booking ranges", () => {
     const result = createBookingSchema.safeParse({
       vehicleId: id, stationId: id, slotId: id, serviceBayId: id,

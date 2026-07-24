@@ -3,6 +3,8 @@ import { authRouter } from "../modules/auth/auth.route";
 import { userRouter } from "../modules/users/user.route";
 import { stationRouter } from "../modules/stations/station.route";
 import { batteryRouter } from "../modules/batteries/battery.route";
+import { batteryTypeRouter } from "../modules/battery-types/battery-type.route";
+import { vehicleModelRouter } from "../modules/vehicle-models/vehicle-model.route";
 import { batterySlotRouter } from "../modules/battery-slots/battery-slot.route";
 import { bookingRouter } from "../modules/bookings/booking.route";
 import { swapRouter } from "../modules/swaps/swap.route";
@@ -23,7 +25,10 @@ import {
   adminVehicleTransferRouter,
 } from "../modules/vehicle-transfer/vehicle-transfer.route";
 import { technicalHistoryRouter } from "../modules/technical-history/technical-history.route";
+import { adminVehicleRouter } from "../modules/admin-vehicles/admin-vehicle.route";
+import { adminSwapTransactionRouter } from "../modules/admin-swap-transactions/admin-swap-transaction.route";
 import { authRecoveryRouter, accountManagementRouter, adminRecoveryRouter } from "../modules/account-recovery/account-recovery.route";
+import { replacementAllocationRouter } from "../modules/replacement-allocation/replacement-allocation.route";
 
 export const apiRouter = Router();
 
@@ -34,9 +39,12 @@ apiRouter.use("/account", accountManagementRouter);
 apiRouter.use("/users", userRouter);
 apiRouter.use("/stations", stationRouter);
 apiRouter.use("/batteries", batteryRouter);
+apiRouter.use("/battery-types", batteryTypeRouter);
+apiRouter.use("/vehicle-models", vehicleModelRouter);
 apiRouter.use("/battery-slots", batterySlotRouter);
 apiRouter.use("/bookings", bookingRouter);
 apiRouter.use("/swaps", swapRouter);
+apiRouter.use("/swap-transactions", replacementAllocationRouter);
 apiRouter.use("/maintenance", maintenanceRouter);
 apiRouter.use("/payments", paymentRouter);
 apiRouter.use("/notifications", notificationRouter);
@@ -45,6 +53,8 @@ apiRouter.use("/manager/bookings", managerBookingRouter);
 apiRouter.use("/staff", staffSwapRouter);
 apiRouter.use("/reports", reportRouter);
 apiRouter.use("/admin/station-assignments", stationAssignmentRouter);
+apiRouter.use("/admin/vehicles", adminVehicleRouter);
+apiRouter.use("/admin/swap-transactions", adminSwapTransactionRouter);
 apiRouter.use("/admin", adminRouter);
 apiRouter.use("/member/vehicles", vehicleRouter);
 // Vehicle ownership transfer routes
